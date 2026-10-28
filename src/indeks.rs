@@ -119,6 +119,8 @@ impl IndeksCache {
 }
 
 pub fn zbuduj_indeks(sciezka_csv: &Path, sciezka_binarnie: &Path) -> io::Result<()> {
+    let start_pre = std::time::Instant::now();
+
     let file = File::open(sciezka_csv)?;
     let reader = BufReader::new(file);
     let mut wpisy = Vec::new();
@@ -156,11 +158,14 @@ pub fn zbuduj_indeks(sciezka_csv: &Path, sciezka_binarnie: &Path) -> io::Result<
         buckets.entry(klucz).or_default().push(idx);
     }
 
+    let czas_prekomputacji = start_pre.elapsed();
+
     let cache = IndeksCache {
         entries: wpisy,
         buckets,
     };
 
+    let start_write = std::time::Instant::now();
     if let Some(parent) = sciezka_binarnie.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -168,6 +173,26 @@ pub fn zbuduj_indeks(sciezka_csv: &Path, sciezka_binarnie: &Path) -> io::Result<
     let out_file = File::create(sciezka_binarnie)?;
     let mut writer = BufWriter::new(out_file);
     cache.serialize(&mut writer)?;
+    let czas_zapisywania = start_write.elapsed();
+
+    println!("=== TELEMETRIA INDEKSU ===");
+    println!("Czas prekomputacji: {:?}", czas_prekomputacji);
+    println!("Czas zapisywania binarki: {:?}", czas_zapisywania);
+    println!("Liczba bucketów: {}", cache.buckets.len());
+    println!("Statystyki bucketów (klucz / samogłoski, hash, liczba elementów):");
+    
+    let mut sorted_buckets: Vec<(&String, &Vec<usize>)> = cache.buckets.iter().collect();
+    sorted_buckets.sort_by_key(|b| b.0);
+
+    use std::hash::Hasher;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+
+    for (klucz, indices) in sorted_buckets {
+        hasher.write(klucz.as_bytes());
+        let hash_val = hasher.finish();
+        println!("  - Klucz/Samogłoski: {:<10} | Hash: {:<16} | Elementy: {}", klucz, hash_val, indices.len());
+    }
+    println!("==========================");
 
     Ok(())
 }
