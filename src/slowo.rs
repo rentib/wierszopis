@@ -126,6 +126,32 @@ impl Słowo {
         }
         klucz
     }
+
+    pub fn klucz_bucketa_id(&self) -> usize {
+        let samogłoski: Vec<&String> = self.głoski.iter().filter(|g| czy_głoska_samogłoska(g)).collect();
+        let start = samogłoski.len().saturating_sub(2);
+        let wybrane = &samogłoski[start..];
+
+        let v_code = |c: &str| -> usize {
+            let bazowa = c.trim_end_matches(|ch| ch == 'ⁱ' || ch == 'ʲ');
+            match bazowa {
+                "a" => 1,
+                "e" | "ę" => 2,
+                "i" | "y" => 3,
+                "o" | "ą" => 4,
+                "u" | "ó" => 5,
+                _ => 6,
+            }
+        };
+
+        if wybrane.is_empty() {
+            0
+        } else if wybrane.len() == 1 {
+            v_code(wybrane[0])
+        } else {
+            v_code(wybrane[0]) * 10 + v_code(wybrane[1])
+        }
+    }
 }
 
 fn rozbij_na_głoski_z_przetworzonych(elementy: &[String]) -> Vec<String> {

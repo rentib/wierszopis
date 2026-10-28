@@ -112,7 +112,7 @@ struct WynikRymu {
 
 struct DictionaryIndex {
     entries: Vec<WpisSlownika>,
-    buckets: HashMap<String, Vec<usize>>, // klucz_bucketa -> indices into entries
+    buckets: Vec<Vec<usize>>, // integer bucket id -> indices into entries
 }
 
 impl DictionaryIndex {
@@ -383,7 +383,9 @@ pub fn uruchom_tui() -> Result<(), io::Error> {
                     let mut seen_details = HashSet::new();
                     let mut details_list = Vec::new();
                     let s_word = slowo::nowe_słowo(&r.slowo);
-                    if let Some(bucket) = index.buckets.get(&s_word.klucz_bucketa()) {
+                    let target_id = s_word.klucz_bucketa_id();
+                    if target_id < index.buckets.len() {
+                        let bucket = &index.buckets[target_id];
                         for &idx in bucket {
                             let entry = &index.entries[idx];
                             if entry.slowo == r.slowo {
@@ -694,13 +696,17 @@ fn queue_search(
 
         let search_start = Instant::now();
         let target = slowo::nowe_słowo(&trimmed);
-        let target_bucket = target.klucz_bucketa();
+        let target_id = target.klucz_bucketa_id();
+        let target_last = target_id % 10;
 
         let mut seen_idx = HashSet::new();
         let mut candidate_indices = Vec::new();
 
-        for (k, b) in &index_arc.buckets {
-            if k == &target_bucket || (k.chars().last() == target_bucket.chars().last()) {
+        for (id, b) in index_arc.buckets.iter().enumerate() {
+            if b.is_empty() {
+                continue;
+            }
+            if id == target_id || (id > 0 && id % 10 == target_last) {
                 for &idx in b {
                     if seen_idx.insert(idx) {
                         candidate_indices.push(idx);

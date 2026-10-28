@@ -1,5 +1,4 @@
 /// Moduł indeksowania binarnego słownika.
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
@@ -17,7 +16,7 @@ pub struct WpisSlownika {
 #[derive(Debug, Clone)]
 pub struct IndeksCache {
     pub entries: Vec<WpisSlownika>,
-    pub buckets: HashMap<String, Vec<usize>>,
+    pub buckets: Vec<Vec<usize>>,
 }
 
 fn write_string(w: &mut impl Write, s: &str) -> io::Result<()> {
@@ -85,10 +84,9 @@ impl IndeksCache {
             entry.serialize(w)?;
         }
         write_usize(w, self.buckets.len())?;
-        for (k, v) in &self.buckets {
-            write_string(w, k)?;
-            write_usize(w, v.len())?;
-            for &idx in v {
+        for bucket in &self.buckets {
+            write_usize(w, bucket.len())?;
+            for &idx in bucket {
                 write_usize(w, idx)?;
             }
         }
@@ -103,15 +101,14 @@ impl IndeksCache {
         }
 
         let buckets_len = read_usize(r)?;
-        let mut buckets = HashMap::with_capacity(buckets_len);
+        let mut buckets = Vec::with_capacity(buckets_len);
         for _ in 0..buckets_len {
-            let k = read_string(r)?;
             let v_len = read_usize(r)?;
             let mut v = Vec::with_capacity(v_len);
             for _ in 0..v_len {
                 v.push(read_usize(r)?);
             }
-            buckets.insert(k, v);
+            buckets.push(v);
         }
 
         Ok(Self { entries, buckets })
@@ -151,11 +148,14 @@ pub fn zbuduj_indeks(sciezka_csv: &Path, sciezka_binarnie: &Path) -> io::Result<
         }
     }
 
-    let mut buckets: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut buckets: Vec<Vec<usize>> = Vec::new();
     for (idx, entry) in wpisy.iter().enumerate() {
         let s = crate::slowo::nowe_słowo(&entry.slowo);
-        let klucz = s.klucz_bucketa();
-        buckets.entry(klucz).or_default().push(idx);
+        let id = s.klucz_bucketa_id();
+        if buckets.len() <= id {
+            buckets.resize_with(id + 1, Vec::new);
+        }
+        buckets[id].push(idx);
     }
 
     let czas_prekomputacji = start_pre.elapsed();
@@ -178,19 +178,13 @@ pub fn zbuduj_indeks(sciezka_csv: &Path, sciezka_binarnie: &Path) -> io::Result<
     println!("=== TELEMETRIA INDEKSU ===");
     println!("Czas prekomputacji: {:?}", czas_prekomputacji);
     println!("Czas zapisywania binarki: {:?}", czas_zapisywania);
-    println!("Liczba bucketów: {}", cache.buckets.len());
-    println!("Statystyki bucketów (klucz / samogłoski, hash, liczba elementów):");
-    
-    let mut sorted_buckets: Vec<(&String, &Vec<usize>)> = cache.buckets.iter().collect();
-    sorted_buckets.sort_by_key(|b| b.0);
+    println!("Liczba bucketów (kategorii hashy): {}", cache.buckets.len());
+    println!("Statystyki bucketów (Hash ID, Liczba elementów):");
 
-    use std::hash::Hasher;
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-
-    for (klucz, indices) in sorted_buckets {
-        hasher.write(klucz.as_bytes());
-        let hash_val = hasher.finish();
-        println!("  - Klucz/Samogłoski: {:<10} | Hash: {:<16} | Elementy: {}", klucz, hash_val, indices.len());
+    for (id, bucket) in cache.buckets.iter().enumerate() {
+        if !bucket.is_empty() {
+            println!("  - Hash ID: {:<4} | Elementy: {}", id, bucket.len());
+        }
     }
     println!("==========================");
 

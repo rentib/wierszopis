@@ -1,6 +1,5 @@
 /// Moduł obsługi słownika i katalogów XDG.
 use crate::indeks::WpisSlownika;
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::path::PathBuf;
@@ -74,11 +73,14 @@ pub fn załaduj_słownik() -> io::Result<crate::indeks::IndeksCache> {
         }
     }
 
-    let mut buckets: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut buckets: Vec<Vec<usize>> = Vec::new();
     for (idx, entry) in wpisy.iter().enumerate() {
         let s = crate::slowo::nowe_słowo(&entry.slowo);
-        let klucz = s.klucz_bucketa();
-        buckets.entry(klucz).or_default().push(idx);
+        let id = s.klucz_bucketa_id();
+        if buckets.len() <= id {
+            buckets.resize_with(id + 1, Vec::new);
+        }
+        buckets[id].push(idx);
     }
 
     Ok(crate::indeks::IndeksCache { entries: wpisy, buckets })
