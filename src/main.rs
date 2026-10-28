@@ -9,13 +9,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.komenda {
         args::Komenda::Wyraz { slowo, .. } => {
             let analiza = fonetyka::analizuj_slowo(&slowo);
+            let sylaby_str: Vec<String> = analiza.sylaby.iter().map(|s| s.concat()).collect();
             println!("Słowo: {}", analiza.slowo);
             println!("Liczba sylab: {}", analiza.liczba_sylab);
             println!("Samogłoski: {:?}", analiza.samogloski);
             println!("Głoski: {:?}", analiza.gloski);
-            println!("Sylaby: {:?}", analiza.sylaby);
-            println!("Rym męski: {:?}", analiza.rym_meski);
-            println!("Rym żeński: {:?}", analiza.rym_zenski);
+            println!("Sylaby: {:?}", sylaby_str);
+            println!("Akcent: {}", analiza.akcent);
+            println!("Rym męski: {}", analiza.rym_meski.concat());
+            println!("Rym żeński: {}", analiza.rym_zenski.concat());
         }
         args::Komenda::Analizuj { sciezka, szczegoly, .. } => {
             if let Some(p) = sciezka {

@@ -142,12 +142,78 @@ pub fn zlicz_sylaby(slowo: &str) -> usize {
     podziel_na_sylaby(&gloski).len()
 }
 
+pub fn wyznacz_akcent(liczba_sylab: usize) -> String {
+    wyznacz_akcent_dla_slowa("", liczba_sylab)
+}
+
+pub fn wyznacz_akcent_dla_slowa(slowo: &str, liczba_sylab: usize) -> String {
+    if liczba_sylab == 0 {
+        return String::new();
+    }
+    if liczba_sylab == 1 {
+        return "S".to_string();
+    }
+
+    let s_lower = slowo.to_lowercase();
+    let mut akcentowana_idx = liczba_sylab.saturating_sub(2); // default paroxytone
+
+    // 1. Check Oxytone (last syllable)
+    let is_upper_abbr = slowo.chars().count() > 1 && slowo.chars().all(|c| c.is_uppercase() || !c.is_alphabetic());
+    let has_prefix_oxy = (s_lower.starts_with("arcy") || s_lower.starts_with("eks") || s_lower.starts_with("wice")) && liczba_sylab == 2;
+
+    if is_upper_abbr || has_prefix_oxy || s_lower == "pafawag" {
+        akcentowana_idx = liczba_sylab - 1;
+    } else {
+        // 2. Check 4th syllable from end
+        let ends_4th = [
+            "alibyśmy", "elibyśmy", "ylibyśmy",
+            "alibyście", "elibyście", "ylibyście",
+        ];
+        if liczba_sylab >= 4 && ends_4th.iter().any(|&s| s_lower.ends_with(s)) {
+            akcentowana_idx = liczba_sylab - 4;
+        } else {
+            // 3. Check 3rd syllable from end (proparoxytone)
+            let ends_3rd = [
+                "liśmy", "liście", "łyśmy", "łyście",
+                "łabym", "łabyś", "łaby", "liby", "łyby", "libyśmy", "łybyście",
+                "kroć", "sta", "set",
+                "abyśmy", "żebyście", "jeżeliby", "iśliby", "ponieważby",
+            ];
+            let proparoxytone_words = [
+                "komitet", "uniwersytet", "maksimum", "minimum", "prezydent",
+            ];
+
+            let matches_3rd_suffix = ends_3rd.iter().any(|&s| s_lower.ends_with(s));
+            let matches_special_word = proparoxytone_words.contains(&s_lower.as_str());
+            let ends_ika_yka = (s_lower.ends_with("ika") || s_lower.ends_with("yka"))
+                && !s_lower.ends_with("ikami") && !s_lower.ends_with("ykami") && !s_lower.ends_with("ikach") && !s_lower.ends_with("ykach");
+
+            if liczba_sylab >= 3 && (matches_3rd_suffix || matches_special_word || ends_ika_yka) {
+                akcentowana_idx = liczba_sylab - 3;
+            }
+        }
+    }
+
+    let mut akcent = vec!['s'; liczba_sylab];
+    if akcentowana_idx < liczba_sylab {
+        akcent[akcentowana_idx] = 'S';
+    }
+
+    // Add secondary accent (P) on the first syllable for words with 4 or more syllables
+    if liczba_sylab >= 4 && akcentowana_idx > 0 {
+        akcent[0] = 'P';
+    }
+
+    akcent.iter().collect()
+}
+
 pub struct AnalizaSlowa {
     pub slowo: String,
     pub liczba_sylab: usize,
     pub samogloski: Vec<char>,
     pub gloski: Vec<String>,
     pub sylaby: Vec<Vec<String>>,
+    pub akcent: String,
     pub rym_meski: Vec<String>,
     pub rym_zenski: Vec<String>,
 }
@@ -157,6 +223,7 @@ pub fn analizuj_slowo(slowo: &str) -> AnalizaSlowa {
     let sylaby = podziel_na_sylaby(&gloski);
     let samogloski: Vec<char> = slowo.to_lowercase().chars().filter(|&c| czy_samogloska(c)).collect();
     let liczba_sylab = sylaby.len();
+    let akcent = wyznacz_akcent_dla_slowa(slowo, liczba_sylab);
 
     let mut indeksy_samogłosek = Vec::new();
     for (i, g) in gloski.iter().enumerate() {
@@ -180,6 +247,7 @@ pub fn analizuj_slowo(slowo: &str) -> AnalizaSlowa {
         samogloski,
         gloski,
         sylaby,
+        akcent,
         rym_meski,
         rym_zenski,
     }
@@ -197,5 +265,22 @@ mod tests {
         assert_eq!(zlicz_sylaby("mama"), 2);
         assert_eq!(zlicz_sylaby("poezja"), 3);
         assert_eq!(zlicz_sylaby("z"), 0);
+    }
+
+    #[test]
+    fn test_wyznacz_akcent() {
+        assert_eq!(wyznacz_akcent(0), "");
+        assert_eq!(wyznacz_akcent(1), "S");
+        assert_eq!(wyznacz_akcent(2), "Ss");
+        assert_eq!(wyznacz_akcent(3), "sSs");
+        assert_eq!(wyznacz_akcent(4), "PsSs");
+    }
+
+    #[test]
+    fn test_wyznacz_akcent_dla_slowa() {
+        assert_eq!(analizuj_slowo("ONZ").akcent, "S");
+        assert_eq!(analizuj_slowo("wicekról").akcent, "sSs");
+        assert_eq!(analizuj_slowo("chodziliśmy").akcent, "PSss");
+        assert_eq!(analizuj_slowo("matematyka").akcent, "PsSss");
     }
 }
