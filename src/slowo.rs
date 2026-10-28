@@ -11,7 +11,7 @@ pub struct Słowo {
 }
 
 pub fn czy_samogłoska(r: char) -> bool {
-    matches!(r, 'a' | 'ą' | 'e' | 'ę' | 'i' | 'o' | 'ó' | 'u' | 'y')
+    matches!(r.to_ascii_lowercase(), 'a' | 'ą' | 'e' | 'ę' | 'i' | 'o' | 'ó' | 'u' | 'y')
 }
 
 pub fn czy_spółgłoska(r: char) -> bool {
@@ -40,8 +40,13 @@ fn czy_jest_u_wyjątkiem(czyste: &str, u_index: usize) -> bool {
 }
 
 pub fn nowe_słowo(tekst: &str) -> Słowo {
-    let czyste = tekst.trim().to_lowercase();
-    let runes: Vec<char> = czyste.chars().collect();
+    let czyste = tekst.trim();
+    let zpracowany = if crate::fonetyka::czy_skrotowiec(czyste) {
+        crate::fonetyka::rozwiniety_skrotowiec(czyste)
+    } else {
+        czyste.to_lowercase()
+    };
+    let runes: Vec<char> = zpracowany.chars().collect();
     let n = runes.len();
     let mut przetworzone: Vec<String> = Vec::new();
 
@@ -67,7 +72,7 @@ pub fn nowe_słowo(tekst: &str) -> Słowo {
             continue;
         }
 
-        if r == 'u' && i > 0 && !czy_jest_u_wyjątkiem(&czyste, i) {
+        if r == 'u' && i > 0 && !czy_jest_u_wyjątkiem(&zpracowany, i) {
             let poprzedni_znaku = runes[i - 1];
             if czy_samogłoska(poprzedni_znaku) && poprzedni_znaku != 'i' {
                 przetworzone.push("ᵘ".to_string());

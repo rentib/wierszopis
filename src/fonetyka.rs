@@ -1,7 +1,7 @@
 /// Moduł zaawansowanej analizy fonetycznej i sylabizacji języka polskiego (inspirowany internal/slowo).
 
 pub fn czy_samogloska(c: char) -> bool {
-    matches!(c, 'a' | 'ą' | 'e' | 'ę' | 'i' | 'o' | 'ó' | 'u' | 'y')
+    matches!(c.to_ascii_lowercase(), 'a' | 'ą' | 'e' | 'ę' | 'i' | 'o' | 'ó' | 'u' | 'y')
 }
 
 pub fn czy_spolgłoska(c: char) -> bool {
@@ -28,10 +28,81 @@ fn czy_jest_u_wyjątkiem(czyste: &str, u_index: usize) -> bool {
     false
 }
 
+pub fn rozwin_litere(c: char) -> &'static str {
+    match c.to_ascii_lowercase() {
+        'a' => "a",
+        'ą' => "ą",
+        'b' => "be",
+        'c' => "ce",
+        'ć' => "će",
+        'd' => "de",
+        'e' => "e",
+        'ę' => "ę",
+        'f' => "ef",
+        'g' => "gie",
+        'h' => "ha",
+        'i' => "i",
+        'j' => "jot",
+        'k' => "ka",
+        'l' => "el",
+        'ł' => "eł",
+        'm' => "em",
+        'n' => "en",
+        'ń' => "eń",
+        'o' => "o",
+        'ó' => "ó",
+        'p' => "pe",
+        'q' => "ku",
+        'r' => "er",
+        's' => "es",
+        'ś' => "eś",
+        't' => "te",
+        'u' => "u",
+        'v' => "fał",
+        'w' => "wu",
+        'x' => "iks",
+        'y' => "y",
+        'ź' => "źe",
+        'z' => "zet",
+        'ż' => "żet",
+        _   => "",
+    }
+}
+
+pub fn czy_skrotowiec(tekst: &str) -> bool {
+    let czyste = tekst.trim();
+    let char_count = czyste.chars().count();
+    
+    if char_count < 2 || char_count > 4 {
+        return false;
+    }
+
+    let has_alpha = czyste.chars().any(|c| c.is_alphabetic());
+    if !has_alpha {
+        return false;
+    }
+
+    let all_upper = czyste.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
+    let has_vowel = czyste.chars().any(czy_samogloska);
+
+    all_upper || !has_vowel
+}
+
+pub fn rozwiniety_skrotowiec(tekst: &str) -> String {
+    tekst.trim().chars()
+        .map(rozwin_litere)
+        .collect()
+}
+
 /// Przetwarza słowo na ciąg głosek uwzględniając zmiękczenia (i) oraz dwugłoski (u).
 pub fn przetworz_na_gloski(tekst: &str) -> Vec<String> {
-    let czyste = tekst.trim().to_lowercase();
-    let runes: Vec<char> = czyste.chars().collect();
+    let czyste = tekst.trim();
+    let zpracowany = if czy_skrotowiec(czyste) {
+        rozwiniety_skrotowiec(czyste)
+    } else {
+        czyste.to_lowercase()
+    };
+    let runes: Vec<char> = zpracowany.chars().collect();
     let n = runes.len();
     let mut przetworzone: Vec<String> = Vec::new();
 
@@ -56,7 +127,7 @@ pub fn przetworz_na_gloski(tekst: &str) -> Vec<String> {
             continue;
         }
 
-        if r == 'u' && i > 0 && !czy_jest_u_wyjątkiem(&czyste, i) {
+        if r == 'u' && i > 0 && !czy_jest_u_wyjątkiem(&zpracowany, i) {
             let poprzedni = runes[i - 1];
             if czy_samogloska(poprzedni) && poprzedni != 'i' {
                 przetworzone.push("ᵘ".to_string());
@@ -158,10 +229,10 @@ pub fn wyznacz_akcent_dla_slowa(slowo: &str, liczba_sylab: usize) -> String {
     let mut akcentowana_idx = liczba_sylab.saturating_sub(2); // default paroxytone
 
     // 1. Check Oxytone (last syllable)
-    let is_upper_abbr = slowo.chars().count() > 1 && slowo.chars().all(|c| c.is_uppercase() || !c.is_alphabetic());
+    let is_abbr = czy_skrotowiec(slowo);
     let has_prefix_oxy = (s_lower.starts_with("arcy") || s_lower.starts_with("eks") || s_lower.starts_with("wice")) && liczba_sylab == 2;
 
-    if is_upper_abbr || has_prefix_oxy || s_lower == "pafawag" {
+    if is_abbr || has_prefix_oxy || s_lower == "pafawag" {
         akcentowana_idx = liczba_sylab - 1;
     } else {
         // 2. Check 4th syllable from end
@@ -278,9 +349,17 @@ mod tests {
 
     #[test]
     fn test_wyznacz_akcent_dla_slowa() {
-        assert_eq!(analizuj_slowo("ONZ").akcent, "S");
+        assert_eq!(analizuj_slowo("ONZ").akcent, "ssS");
         assert_eq!(analizuj_slowo("wicekról").akcent, "sSs");
         assert_eq!(analizuj_slowo("chodziliśmy").akcent, "PSss");
         assert_eq!(analizuj_slowo("matematyka").akcent, "PsSss");
+    }
+
+    #[test]
+    fn test_skrotowce() {
+        assert_eq!(zlicz_sylaby("bmw"), 3);
+        assert_eq!(zlicz_sylaby("BMW"), 3);
+        assert_eq!(analizuj_slowo("BMW").akcent, "ssS");
+        assert_eq!(analizuj_slowo("bmw").akcent, "ssS");
     }
 }
