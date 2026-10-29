@@ -24,7 +24,37 @@ pub fn wyznacz_akcent_wersu(słowa: &[Słowo]) -> String {
     let proclitics_di = ["beze", "pode", "nade", "przede", "przeze", "poza"];
     let enclitics = ["ci", "go", "ją", "mu", "was", "się", "mi"];
 
+    // Handle runs of consecutive monosyllabic words with alternating S s S s
+    let mut multi_run_indices = vec![false; słowa.len()];
+    let mut idx_run = 0;
+    while idx_run < słowa.len() {
+        if word_accents[idx_run].len() == 1 {
+            let start = idx_run;
+            while idx_run < słowa.len() && word_accents[idx_run].len() == 1 {
+                idx_run += 1;
+            }
+            let end = idx_run;
+            if end - start >= 2 {
+                for idx in start..end {
+                    multi_run_indices[idx] = true;
+                }
+            }
+            for (offset, idx) in (start..end).enumerate() {
+                if offset % 2 == 0 {
+                    word_accents[idx] = "S".to_string();
+                } else {
+                    word_accents[idx] = "s".to_string();
+                }
+            }
+        } else {
+            idx_run += 1;
+        }
+    }
+
     for i in 0..słowa.len() {
+        if multi_run_indices[i] {
+            continue;
+        }
         let w_lower = słowa[i].oryginalne.to_lowercase();
 
         if i > 0 && proclitics_di.contains(&w_lower.as_str()) && i + 1 < słowa.len() {
@@ -58,13 +88,6 @@ pub fn wyznacz_akcent_wersu(słowa: &[Słowo]) -> String {
                 // Monosyllabic preposition + disyllabic/longer word -> preposition is unstressed (s)
                 word_accents[i] = "s".repeat(len);
             }
-        } else if word_accents[i].len() == 1
-            && i + 1 < słowa.len()
-            && word_accents[i + 1].len() == 1
-        {
-            // General zbitka dwóch słów jednosylabowych (monosyllabic word pair): first is S, second is s
-            word_accents[i] = "S".to_string();
-            word_accents[i + 1] = "s".to_string();
         }
 
         if enclitics.contains(&w_lower.as_str()) {
@@ -249,6 +272,14 @@ mod tests {
         assert_eq!(
             nowy_wers("I tej świeżej łąk zieleni;").akcent_wersu,
             "SsSsSsSs"
+        );
+        assert_eq!(
+            nowy_wers("Niedostępna ludzkim oczom, że nikt po niej się nie błąka,").akcent_wersu,
+            "PsSsSsSsSsSsSsSs"
+        );
+        assert_eq!(
+            nowy_wers("W swym bezpieczu szmaragdowym rozkwitała w bezmiar łąka,").akcent_wersu,
+            "SsSsPsSsPsSsSsSs"
         );
         // assert_eq!(nowy_wers("").akcent_wersu, "SsSsSsSs");
     }
