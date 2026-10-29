@@ -1,11 +1,13 @@
 /// Odpowiednik internal/slowo w języku Rust.
 use crate::rym;
+use crate::fonetyka::czy_głoska_samogłoska;
 
 #[derive(Clone, Debug)]
 pub struct Słowo {
     pub oryginalne: String,
     pub głoski: Vec<String>,
     pub sylaby: Vec<Vec<String>>,
+    pub akcent: String,
     pub rym_meski: Vec<String>,
     pub rym_zenski: Vec<String>,
 }
@@ -18,96 +20,15 @@ pub fn czy_spółgłoska(r: char) -> bool {
     !czy_samogłoska(r)
 }
 
-const WYJĄTKI_U: &[&str] = &[
-    "auw", "deus", "leus", "feus", "teus", "zauf", "pouf",
-    "nauk", "naucz", "nauce", "wyucz", "zausz", "tryumf", "nieu",
-];
-
-fn czy_jest_u_wyjątkiem(czyste: &str, u_index: usize) -> bool {
-    for w in WYJĄTKI_U {
-        let mut start = 0;
-        while let Some(idx) = czyste[start..].find(w) {
-            let abs_idx = start + idx;
-            if let Some(u_offset) = w.find('u') {
-                if abs_idx + u_offset == u_index {
-                    return true;
-                }
-            }
-            start = abs_idx + 1;
-        }
-    }
-    false
-}
-
 pub fn nowe_słowo(tekst: &str) -> Słowo {
-    let czyste = tekst.trim();
-    let zpracowany = if crate::fonetyka::czy_skrotowiec(czyste) {
-        crate::fonetyka::rozwiniety_skrotowiec(czyste)
-    } else {
-        czyste.to_lowercase()
-    };
-    let runes: Vec<char> = zpracowany.chars().collect();
-    let n = runes.len();
-    let mut przetworzone: Vec<String> = Vec::new();
-
-    for i in 0..n {
-        let r = runes[i];
-
-        if i == 0 && r == 'i' && i + 1 < n && czy_samogłoska(runes[i + 1]) {
-            przetworzone.push("ʲ".to_string());
-            continue;
-        }
-
-        if r == 'i' && i > 0 && i + 1 < n && czy_spółgłoska(runes[i - 1]) && czy_samogłoska(runes[i + 1]) {
-            if !przetworzone.is_empty() {
-                let poprzednia = przetworzone[przetworzone.len() - 1].clone();
-                let idx = przetworzone.len() - 1;
-                if poprzednia == "s" || poprzednia == "c" || poprzednia == "z" || poprzednia == "n" ||
-                    poprzednia == "sz" || poprzednia == "cz" || poprzednia == "dz" || poprzednia == "rz" {
-                    przetworzone[idx] = format!("{}ⁱ", poprzednia);
-                } else {
-                    przetworzone[idx] = format!("{}ʲ", poprzednia);
-                }
-            }
-            continue;
-        }
-
-        if r == 'u' && i > 0 && !czy_jest_u_wyjątkiem(&zpracowany, i) {
-            let poprzedni_znaku = runes[i - 1];
-            if czy_samogłoska(poprzedni_znaku) && poprzedni_znaku != 'i' {
-                przetworzone.push("ᵘ".to_string());
-                continue;
-            }
-        }
-
-        przetworzone.push(r.to_string());
-    }
-
-    let głoski = rozbij_na_głoski_z_przetworzonych(&przetworzone);
-    let sylaby = podziel_na_sylaby(&głoski);
-
-    let mut indeksy_samogłosek = Vec::new();
-    for (i, g) in głoski.iter().enumerate() {
-        if czy_głoska_samogłoska(g) {
-            indeksy_samogłosek.push(i);
-        }
-    }
-
-    let mut rym_meski = Vec::new();
-    let mut rym_zenski = Vec::new();
-    if !indeksy_samogłosek.is_empty() {
-        rym_meski = głoski[indeksy_samogłosek[indeksy_samogłosek.len() - 1]..].to_vec();
-    }
-    if indeksy_samogłosek.len() >= 2 {
-        rym_zenski = głoski[indeksy_samogłosek[indeksy_samogłosek.len() - 2]..].to_vec();
-    }
-
+    let analiza = crate::fonetyka::analizuj_slowo(tekst);
     Słowo {
         oryginalne: tekst.to_string(),
-        głoski,
-        sylaby,
-        rym_meski,
-        rym_zenski,
+        głoski: analiza.gloski,
+        sylaby: analiza.sylaby,
+        akcent: analiza.akcent,
+        rym_meski: analiza.rym_meski,
+        rym_zenski: analiza.rym_zenski,
     }
 }
 
@@ -157,69 +78,49 @@ impl Słowo {
             v_code(wybrane[0]) * 10 + v_code(wybrane[1])
         }
     }
-}
 
-fn rozbij_na_głoski_z_przetworzonych(elementy: &[String]) -> Vec<String> {
-    let mut głoski = Vec::new();
-    let n = elementy.len();
-    let mut i = 0;
+    pub fn sylaba_spans(&self) -> Vec<(usize, usize)> {
+        let text = &self.oryginalne;
+        let chars: Vec<(usize, char)> = text.char_indices().filter(|(_, c)| c.is_alphabetic() || "ąęśćżźńłóĄĘŚĆŻŹŃŁÓ".contains(*c)).collect();
+        if chars.is_empty() {
+            return vec![(0, text.len())];
+        }
 
-    while i < n {
-        if i + 1 < n {
-            let para = format!("{}{}", elementy[i], elementy[i + 1]);
-            if para == "ch" || para == "cz" || para == "dz" || para == "dź" || para == "dż" || para == "rz" || para == "sz" {
-                głoski.push(para);
-                i += 2;
-                continue;
+        let mut spans = Vec::new();
+        let mut char_idx = 0;
+
+        for syl in &self.sylaby {
+            let syl_chars_len: usize = syl.iter().map(|p| {
+                if p.ends_with('ⁱ') || p.ends_with('ʲ') {
+                    let base = p.trim_end_matches(|c| c == 'ⁱ' || c == 'ʲ');
+                    base.chars().count() + 1
+                } else {
+                    match p.as_str() {
+                        "sz" | "cz" | "rz" | "ch" | "dz" | "dź" | "dż" => 2,
+                        "ʲ" | "ⁱ" | "ᵘ" => 0,
+                        other => other.chars().count(),
+                    }
+                }
+            }).sum();
+
+            let start_char = char_idx;
+            let end_char = (char_idx + syl_chars_len).min(chars.len());
+            
+            if start_char < chars.len() {
+                let start_byte = chars[start_char].0;
+                let end_byte = if end_char < chars.len() {
+                    chars[end_char].0
+                } else {
+                    text.len()
+                };
+                spans.push((start_byte, end_byte));
+            } else {
+                spans.push((text.len(), text.len()));
             }
+            char_idx = end_char;
         }
-        głoski.push(elementy[i].clone());
-        i += 1;
+        spans
     }
-
-    głoski
-}
-
-fn czy_głoska_samogłoska(głoska: &str) -> bool {
-    rym::czy_samogloska(głoska)
-}
-
-fn podziel_na_sylaby(gloski: &[String]) -> Vec<Vec<String>> {
-    if gloski.is_empty() {
-        return vec![];
-    }
-
-    let mut indeksy_samogłosek = Vec::new();
-    for (i, g) in gloski.iter().enumerate() {
-        if czy_głoska_samogłoska(g) {
-            indeksy_samogłosek.push(i);
-        }
-    }
-
-    if indeksy_samogłosek.is_empty() {
-        return vec![];
-    }
-
-    if indeksy_samogłosek.len() == 1 {
-        return vec![gloski.to_vec()];
-    }
-
-    let mut sylaby = Vec::new();
-    let mut aktualny_start = 0;
-
-    for s_idx in 0..indeksy_samogłosek.len() - 1 {
-        let v1 = indeksy_samogłosek[s_idx];
-        let v2 = indeksy_samogłosek[s_idx + 1];
-
-        let liczba_spółgłosek = v2 - v1 - 1;
-        let punkt_podziału = v1 + 1 + (liczba_spółgłosek / 2);
-
-        sylaby.push(gloski[aktualny_start..punkt_podziału].to_vec());
-        aktualny_start = punkt_podziału;
-    }
-
-    sylaby.push(gloski[aktualny_start..].to_vec());
-    sylaby
 }
 
 pub fn czy_rymują(s1: &Słowo, s2: &Słowo) -> (bool, i32, i32) {

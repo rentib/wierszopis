@@ -127,6 +127,8 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
     let mut max_syl_len = 1;
     let mut max_cost_len = 1;
     let mut max_color_len = 1;
+    let mut max_akcent_len = 1;
+    let mut max_line_width = 1;
 
     for z in &zapisane {
         if z.wers.oryginalne.is_empty() {
@@ -154,6 +156,14 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
         };
         if color_str.len() > max_color_len {
             max_color_len = color_str.len();
+        }
+        let akcent_len = z.wers.akcent_wersu.len();
+        if akcent_len > max_akcent_len {
+            max_akcent_len = akcent_len;
+        }
+        let line_len = z.wers.surowy_tekst.chars().count();
+        if line_len > max_line_width {
+            max_line_width = line_len;
         }
     }
 
@@ -190,20 +200,108 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
         } else {
             format!("[{}] [{}]", nr_str, syl_str)
         };
-        let tekst = &z.wers.surowy_tekst;
 
-        if z.kolor != 0 {
+        let akcent_suffix = if szczegoly {
+            format!(" [{:<width$}]", z.wers.akcent_wersu, width = max_akcent_len)
+        } else {
+            "".to_string()
+        };
+
+        let color = if z.kolor != 0 {
             if let Some(&(_, paleta_i)) = unikalne_kolory.get(&z.kolor) {
-                let color_code = PALETA_KOLORÓW[paleta_i];
-                let styled = tekst.as_str().with(Color::AnsiValue(color_code));
-                println!("{} {}", etykieta, styled);
+                Some(Color::AnsiValue(PALETA_KOLORÓW[paleta_i]))
             } else {
-                println!("{} {}", etykieta, tekst);
+                None
             }
         } else {
-            println!("{} {}", etykieta, tekst);
-        }
+            None
+        };
+
+        let rendered_text = renderuj_wers_z_akcentami(&z.wers, color);
+        let current_width = z.wers.surowy_tekst.chars().count();
+        let padding = if current_width < max_line_width {
+            " ".repeat(max_line_width - current_width)
+        } else {
+            "".to_string()
+        };
+        println!("{} {}{}{}", etykieta, rendered_text, padding, akcent_suffix);
     }
 
     Ok(())
+}
+
+fn renderuj_wers_z_akcentami(wers: &Wers, color: Option<Color>) -> String {
+    let text = &wers.surowy_tekst;
+    let mut accented_spans = Vec::new();
+    
+    let mut search_start = 0;
+    let mut global_syl_idx = 0;
+    for sw in &wers.słowa {
+        if let Some(word_rel_pos) = text[search_start..].find(&sw.oryginalne) {
+            let word_start = search_start + word_rel_pos;
+            let spans = sw.sylaba_spans();
+            for (_i, &(s_start, s_end)) in spans.iter().enumerate() {
+                let akcent_char = wers.akcent_wersu.chars().nth(global_syl_idx).unwrap_or('s');
+                global_syl_idx += 1;
+
+                let is_accented = akcent_char == 'S';
+                if is_accented {
+                    let abs_start = word_start + s_start.min(sw.oryginalne.len());
+                    let abs_end = word_start + s_end.min(sw.oryginalne.len());
+                    if abs_start < abs_end && abs_end <= text.len() {
+                        accented_spans.push((abs_start, abs_end));
+                    }
+                }
+            }
+            search_start = word_start + sw.oryginalne.len();
+        }
+    }
+    
+    accented_spans.sort_by_key(|&(start, _)| start);
+    let mut merged_spans: Vec<(usize, usize)> = Vec::new();
+    for span in accented_spans {
+        if let Some(last) = merged_spans.last_mut() {
+            if span.0 <= last.1 {
+                last.1 = last.1.max(span.1);
+            } else {
+                merged_spans.push(span);
+            }
+        } else {
+            merged_spans.push(span);
+        }
+    }
+    
+    let mut result = String::new();
+    let mut last_idx = 0;
+    
+    for &(start, end) in &merged_spans {
+        if start > last_idx {
+            let chunk = &text[last_idx..start];
+            result.push_str(&apply_color(chunk, color));
+        }
+        let accented_chunk = &text[start..end];
+        result.push_str(&apply_bold_color(accented_chunk, color));
+        last_idx = end;
+    }
+    if last_idx < text.len() {
+        let chunk = &text[last_idx..];
+        result.push_str(&apply_color(chunk, color));
+    }
+    result
+}
+
+fn apply_color(s: &str, color: Option<Color>) -> String {
+    if let Some(col) = color {
+        format!("{}", s.with(col))
+    } else {
+        s.to_string()
+    }
+}
+
+fn apply_bold_color(s: &str, color: Option<Color>) -> String {
+    if let Some(col) = color {
+        format!("{}", s.with(col).bold())
+    } else {
+        format!("{}", s.bold())
+    }
 }
