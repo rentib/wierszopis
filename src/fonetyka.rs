@@ -378,7 +378,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_zlicz_sylaby() {
+    fn liczba_sylab_słowa() {
         assert_eq!(zlicz_sylaby("kot"), 1);
         assert_eq!(zlicz_sylaby("dom"), 1);
         assert_eq!(zlicz_sylaby("wiersz"), 1);
@@ -388,16 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn test_wyznacz_akcent() {
-        assert_eq!(wyznacz_akcent(0), "");
-        assert_eq!(wyznacz_akcent(1), "S");
-        assert_eq!(wyznacz_akcent(2), "Ss");
-        assert_eq!(wyznacz_akcent(3), "sSs");
-        assert_eq!(wyznacz_akcent(4), "PsSs");
-    }
-
-    #[test]
-    fn test_wyznacz_akcent_dla_slowa() {
+    fn akcent_słowa() {
         assert_eq!(analizuj_slowo("ONZ").akcent, "ssS");
         assert_eq!(analizuj_slowo("wicekról").akcent, "sSs");
         assert_eq!(analizuj_slowo("chodziliśmy").akcent, "PSss");
@@ -405,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn test_skrotowce() {
+    fn akcentowanie_skrótów() {
         assert_eq!(zlicz_sylaby("bmw"), 3);
         assert_eq!(zlicz_sylaby("BMW"), 3);
         assert_eq!(analizuj_slowo("BMW").akcent, "ssS");

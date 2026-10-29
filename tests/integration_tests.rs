@@ -4,7 +4,7 @@ use std::path::Path;
 use wierszopis::{slowo, wers};
 
 #[test]
-fn test_pary_rymujące_słów() {
+fn pary_słów_rymujących() {
     let path = Path::new("tests/rymy/tak.txt");
     if !path.exists() {
         return;
@@ -41,7 +41,7 @@ fn test_pary_rymujące_słów() {
 }
 
 #[test]
-fn test_pary_nierymujące_słów() {
+fn pary_słów_nierymujących() {
     let path = Path::new("tests/rymy/nie.txt");
     if !path.exists() {
         return;

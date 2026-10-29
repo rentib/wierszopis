@@ -384,7 +384,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_porownaj_rymy() {
+    fn porownaj_rymy() {
         let g1 = vec!["o".to_string(), "t".to_string()];
         let g2 = vec!["o".to_string(), "t".to_string()];
         let (rym, _, _) = porównaj_rymy(&g1, &g2);

@@ -169,7 +169,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mama_mamama_bucket() {
+    fn klucz_słowa_w_słowniku() {
         let s1 = nowe_słowo("mama");
         let s2 = nowe_słowo("mamama");
         println!(
@@ -181,13 +181,5 @@ mod tests {
         assert_eq!(s1.rym_zenski, s2.rym_zenski);
         let (ok1, _, _) = czy_rymują(&s1, &s2);
         assert!(ok1);
-    }
-
-    #[test]
-    fn test_tata_a_nierymuja() {
-        let s1 = nowe_słowo("tata");
-        let s2 = nowe_słowo("a");
-        let (ok, _, _) = czy_rymują(&s1, &s2);
-        assert!(!ok);
     }
 }

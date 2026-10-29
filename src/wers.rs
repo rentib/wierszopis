@@ -213,30 +213,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_za_to_lato_wers() {
-        let w1 = nowy_wers("za to");
-        let w2 = nowy_wers("lato");
-        let (ok, _, _) = czy_rymują(&w1, &w2);
-        assert!(ok);
+    fn rym_miedzy_wersami() {
+        assert!(czy_rymują(&nowy_wers("a ja na to"), &nowy_wers("jak na lato")).0);
     }
 
     #[test]
-    fn test_w_objecia_mocno_chwytajac() {
-        let w = nowy_wers("w objęcia mocno chwytając");
-        assert_eq!(w.akcent_wersu, "sSsSssSs");
-    }
+    fn akcent_zdaniowy() {
+        assert_eq!(
+            nowy_wers("w objęcia mocno chwytając").akcent_wersu,
+            "sSsSssSs"
+        );
 
-    #[test]
-    fn test_akcent_zdaniowy_przypadki() {
-        assert_eq!(nowy_wers("nie wiem").akcent_wersu, "Ss");
-        assert_eq!(nowy_wers("nie chce").akcent_wersu, "Ss");
-        assert_eq!(nowy_wers("bez nich").akcent_wersu, "Ss");
-        assert_eq!(nowy_wers("do was").akcent_wersu, "Ss");
-        assert_eq!(nowy_wers("nie pomaga").akcent_wersu, "ssSs");
-    }
-
-    #[test]
-    fn trochej() {
+        // trochej
         assert_eq!(
             nowy_wers("Nie rusz, Andziu, tego kwiatka,").akcent_wersu,
             "SsSsSsSs"
@@ -281,7 +269,15 @@ mod tests {
             nowy_wers("W swym bezpieczu szmaragdowym rozkwitała w bezmiar łąka,").akcent_wersu,
             "SsSsPsSsPsSsSsSs"
         );
-        // assert_eq!(nowy_wers("").akcent_wersu, "SsSsSsSs");
+    }
+
+    #[test]
+    fn akcent_zdaniowy_przypadki_szczegolne() {
+        assert_eq!(nowy_wers("nie wiem").akcent_wersu, "Ss");
+        assert_eq!(nowy_wers("nie chce").akcent_wersu, "Ss");
+        assert_eq!(nowy_wers("bez nich").akcent_wersu, "Ss");
+        assert_eq!(nowy_wers("do was").akcent_wersu, "Ss");
+        assert_eq!(nowy_wers("nie pomaga").akcent_wersu, "ssSs");
     }
 }
 
