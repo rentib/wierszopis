@@ -282,7 +282,7 @@ fn renderuj_wers_z_akcentami(wers: &Wers, color: Option<Color>) -> String {
             result.push_str(&apply_color(chunk, color));
         }
         let accented_chunk = &text[start..end];
-        result.push_str(&apply_bold_color(accented_chunk, color));
+        result.push_str(&wyróżnij_akcent(accented_chunk, color));
         last_idx = end;
     }
     if last_idx < text.len() {
@@ -300,10 +300,10 @@ fn apply_color(s: &str, color: Option<Color>) -> String {
     }
 }
 
-fn apply_bold_color(s: &str, color: Option<Color>) -> String {
+fn wyróżnij_akcent(s: &str, color: Option<Color>) -> String {
     if let Some(col) = color {
-        format!("{}", s.with(col).bold())
+        format!("{}", s.with(col).underlined())
     } else {
-        format!("{}", s.bold())
+        format!("{}", s.underlined())
     }
 }
