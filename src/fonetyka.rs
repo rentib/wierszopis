@@ -1,7 +1,10 @@
 /// Moduł zaawansowanej analizy fonetycznej i sylabizacji języka polskiego (inspirowany internal/slowo).
 
 pub fn czy_samogloska(c: char) -> bool {
-    matches!(c.to_ascii_lowercase(), 'a' | 'ą' | 'e' | 'ę' | 'i' | 'o' | 'ó' | 'u' | 'y')
+    matches!(
+        c.to_ascii_lowercase(),
+        'a' | 'ą' | 'e' | 'ę' | 'i' | 'o' | 'ó' | 'u' | 'y'
+    )
 }
 
 pub fn czy_spolgłoska(c: char) -> bool {
@@ -10,8 +13,8 @@ pub fn czy_spolgłoska(c: char) -> bool {
 
 fn czy_jest_u_wyjątkiem(czyste: &str, u_index: usize) -> bool {
     let wyjątki = [
-        "auw", "deus", "leus", "feus", "teus", "zauf", "pouf",
-        "nauk", "naucz", "nauce", "wyucz", "zausz", "tryumf", "nieu",
+        "auw", "deus", "leus", "feus", "teus", "zauf", "pouf", "nauk", "naucz", "nauce", "wyucz",
+        "zausz", "tryumf", "nieu",
     ];
     for w in wyjątki {
         let mut start = 0;
@@ -65,14 +68,14 @@ pub fn rozwin_litere(c: char) -> &'static str {
         'ź' => "źe",
         'z' => "zet",
         'ż' => "żet",
-        _   => "",
+        _ => "",
     }
 }
 
 pub fn czy_skrotowiec(tekst: &str) -> bool {
     let czyste = tekst.trim();
     let char_count = czyste.chars().count();
-    
+
     if char_count < 2 || char_count > 4 {
         return false;
     }
@@ -82,16 +85,16 @@ pub fn czy_skrotowiec(tekst: &str) -> bool {
         return false;
     }
 
-    let all_upper = czyste.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
+    let all_upper = czyste
+        .chars()
+        .all(|c| !c.is_alphabetic() || c.is_uppercase());
     let has_vowel = czyste.chars().any(czy_samogloska);
 
     all_upper || !has_vowel
 }
 
 pub fn rozwiniety_skrotowiec(tekst: &str) -> String {
-    tekst.trim().chars()
-        .map(rozwin_litere)
-        .collect()
+    tekst.trim().chars().map(rozwin_litere).collect()
 }
 
 /// Przetwarza słowo na ciąg głosek uwzględniając zmiękczenia (i) oraz dwugłoski (u).
@@ -114,11 +117,23 @@ pub fn przetworz_na_gloski(tekst: &str) -> Vec<String> {
             continue;
         }
 
-        if r == 'i' && i > 0 && i + 1 < n && czy_spolgłoska(runes[i - 1]) && czy_samogloska(runes[i + 1]) {
+        if r == 'i'
+            && i > 0
+            && i + 1 < n
+            && czy_spolgłoska(runes[i - 1])
+            && czy_samogloska(runes[i + 1])
+        {
             if !przetworzone.is_empty() {
                 let pop = przetworzone.pop().unwrap();
-                if pop == "s" || pop == "c" || pop == "z" || pop == "n" ||
-                    pop == "sz" || pop == "cz" || pop == "dz" || pop == "rz" {
+                if pop == "s"
+                    || pop == "c"
+                    || pop == "z"
+                    || pop == "n"
+                    || pop == "sz"
+                    || pop == "cz"
+                    || pop == "dz"
+                    || pop == "rz"
+                {
                     przetworzone.push(format!("{}ⁱ", pop));
                 } else {
                     przetworzone.push(format!("{}ʲ", pop));
@@ -149,7 +164,14 @@ fn rozbij_digrafy(elementy: &[String]) -> Vec<String> {
     while i < n {
         if i + 1 < n {
             let para = format!("{}{}", elementy[i], elementy[i + 1]);
-            if para == "ch" || para == "cz" || para == "dz" || para == "dź" || para == "dż" || para == "rz" || para == "sz" {
+            if para == "ch"
+                || para == "cz"
+                || para == "dz"
+                || para == "dź"
+                || para == "dż"
+                || para == "rz"
+                || para == "sz"
+            {
                 gloski.push(para);
                 i += 2;
                 continue;
@@ -230,34 +252,57 @@ pub fn wyznacz_akcent_dla_slowa(slowo: &str, liczba_sylab: usize) -> String {
 
     // 1. Check Oxytone (last syllable)
     let is_abbr = czy_skrotowiec(slowo);
-    let has_prefix_oxy = (s_lower.starts_with("arcy") || s_lower.starts_with("eks") || s_lower.starts_with("wice")) && liczba_sylab == 2;
+    let has_prefix_oxy =
+        (s_lower.starts_with("arcy") || s_lower.starts_with("eks") || s_lower.starts_with("wice"))
+            && liczba_sylab == 2;
 
     if is_abbr || has_prefix_oxy || s_lower == "pafawag" {
         akcentowana_idx = liczba_sylab - 1;
     } else {
         // 2. Check 4th syllable from end
         let ends_4th = [
-            "alibyśmy", "elibyśmy", "ylibyśmy",
-            "alibyście", "elibyście", "ylibyście",
+            "alibyśmy",
+            "elibyśmy",
+            "ylibyśmy",
+            "alibyście",
+            "elibyście",
+            "ylibyście",
         ];
         if liczba_sylab >= 4 && ends_4th.iter().any(|&s| s_lower.ends_with(s)) {
             akcentowana_idx = liczba_sylab - 4;
         } else {
             // 3. Check 3rd syllable from end (proparoxytone)
             let ends_3rd = [
-                "liśmy", "liście", "łyśmy", "łyście",
-                "łabym", "łabyś", "łaby", "liby", "łyby", "libyśmy", "łybyście",
-                "kroć", "sta", "set",
-                "abyśmy", "żebyście", "jeżeliby", "iśliby", "ponieważby",
+                "liśmy",
+                "liście",
+                "łyśmy",
+                "łyście",
+                "łabym",
+                "łabyś",
+                "łaby",
+                "liby",
+                "łyby",
+                "libyśmy",
+                "łybyście",
+                "kroć",
+                "sta",
+                "set",
+                "abyśmy",
+                "żebyście",
+                "jeżeliby",
+                "iśliby",
+                "ponieważby",
             ];
-            let proparoxytone_words = [
-                "komitet", "uniwersytet", "maksimum", "minimum", "prezydent",
-            ];
+            let proparoxytone_words =
+                ["komitet", "uniwersytet", "maksimum", "minimum", "prezydent"];
 
             let matches_3rd_suffix = ends_3rd.iter().any(|&s| s_lower.ends_with(s));
             let matches_special_word = proparoxytone_words.contains(&s_lower.as_str());
             let ends_ika_yka = (s_lower.ends_with("ika") || s_lower.ends_with("yka"))
-                && !s_lower.ends_with("ikami") && !s_lower.ends_with("ykami") && !s_lower.ends_with("ikach") && !s_lower.ends_with("ykach");
+                && !s_lower.ends_with("ikami")
+                && !s_lower.ends_with("ykami")
+                && !s_lower.ends_with("ikach")
+                && !s_lower.ends_with("ykach");
 
             if liczba_sylab >= 3 && (matches_3rd_suffix || matches_special_word || ends_ika_yka) {
                 akcentowana_idx = liczba_sylab - 3;
@@ -292,7 +337,11 @@ pub struct AnalizaSlowa {
 pub fn analizuj_slowo(slowo: &str) -> AnalizaSlowa {
     let gloski = przetworz_na_gloski(slowo);
     let sylaby = podziel_na_sylaby(&gloski);
-    let samogloski: Vec<char> = slowo.to_lowercase().chars().filter(|&c| czy_samogloska(c)).collect();
+    let samogloski: Vec<char> = slowo
+        .to_lowercase()
+        .chars()
+        .filter(|&c| czy_samogloska(c))
+        .collect();
     let liczba_sylab = sylaby.len();
     let akcent = wyznacz_akcent_dla_slowa(slowo, liczba_sylab);
 

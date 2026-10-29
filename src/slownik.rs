@@ -8,7 +8,13 @@ pub fn pobierz_sciezke_slownika() -> Option<PathBuf> {
     if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
         Some(PathBuf::from(xdg).join("wierszopis").join("slownik.csv"))
     } else if let Some(home) = std::env::var_os("HOME") {
-        Some(PathBuf::from(home).join(".local").join("share").join("wierszopis").join("slownik.csv"))
+        Some(
+            PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("wierszopis")
+                .join("slownik.csv"),
+        )
     } else {
         None
     }
@@ -18,7 +24,13 @@ pub fn pobierz_sciezke_indeksu() -> Option<PathBuf> {
     if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
         Some(PathBuf::from(xdg).join("wierszopis").join("slownik.bin"))
     } else if let Some(home) = std::env::var_os("HOME") {
-        Some(PathBuf::from(home).join(".local").join("share").join("wierszopis").join("slownik.bin"))
+        Some(
+            PathBuf::from(home)
+                .join(".local")
+                .join("share")
+                .join("wierszopis")
+                .join("slownik.bin"),
+        )
     } else {
         None
     }
@@ -42,7 +54,12 @@ pub fn załaduj_słownik() -> io::Result<crate::indeks::IndeksCache> {
             let p = PathBuf::from("slownik.csv");
             if p.exists() { Some(p) } else { None }
         })
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Nie znaleziono pliku słownika (slownik.bin ani slownik.csv)"))?;
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Nie znaleziono pliku słownika (slownik.bin ani slownik.csv)",
+            )
+        })?;
 
     let file = File::open(&csv_path)?;
     let reader = BufReader::new(file);
@@ -83,7 +100,10 @@ pub fn załaduj_słownik() -> io::Result<crate::indeks::IndeksCache> {
         buckets[id].push(idx);
     }
 
-    Ok(crate::indeks::IndeksCache { entries: wpisy, buckets })
+    Ok(crate::indeks::IndeksCache {
+        entries: wpisy,
+        buckets,
+    })
 }
 
 pub fn przetłumacz_część_mowy(pos: &str) -> &str {
@@ -94,7 +114,22 @@ pub fn przetłumacz_część_mowy(pos: &str) -> &str {
         "Rzeczownik (deprecjatywny)"
     } else if p == "adj" || p == "adjp" || p == "adjc" || p.starts_with("adj") {
         "Przymiotnik"
-    } else if p == "verb" || p == "fin" || p == "bedzie" || p == "inf" || p == "praet" || p == "impt" || p == "ger" || p == "pact" || p == "ppas" || p == "winien" || p == "pred" || p == "imps" || p == "pcon" || p == "pant" || p.starts_with("verb") {
+    } else if p == "verb"
+        || p == "fin"
+        || p == "bedzie"
+        || p == "inf"
+        || p == "praet"
+        || p == "impt"
+        || p == "ger"
+        || p == "pact"
+        || p == "ppas"
+        || p == "winien"
+        || p == "pred"
+        || p == "imps"
+        || p == "pcon"
+        || p == "pant"
+        || p.starts_with("verb")
+    {
         "Czasownik"
     } else if p == "adv" {
         "Przysłówek"

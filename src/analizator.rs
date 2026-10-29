@@ -106,14 +106,16 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
         start = end;
     }
 
-    let mut unikalne_kolory_set: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+    let mut unikalne_kolory_set: std::collections::BTreeSet<usize> =
+        std::collections::BTreeSet::new();
     for z in &zapisane {
         if z.kolor != 0 {
             unikalne_kolory_set.insert(z.kolor);
         }
     }
 
-    let mut unikalne_kolory: std::collections::HashMap<usize, (usize, usize)> = std::collections::HashMap::new();
+    let mut unikalne_kolory: std::collections::HashMap<usize, (usize, usize)> =
+        std::collections::HashMap::new();
     let mut paleta_idx = 0;
 
     for col in unikalne_kolory_set {
@@ -233,7 +235,7 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
 fn renderuj_wers_z_akcentami(wers: &Wers, color: Option<Color>) -> String {
     let text = &wers.surowy_tekst;
     let mut accented_spans = Vec::new();
-    
+
     let mut search_start = 0;
     let mut global_syl_idx = 0;
     for sw in &wers.słowa {
@@ -256,7 +258,7 @@ fn renderuj_wers_z_akcentami(wers: &Wers, color: Option<Color>) -> String {
             search_start = word_start + sw.oryginalne.len();
         }
     }
-    
+
     accented_spans.sort_by_key(|&(start, _)| start);
     let mut merged_spans: Vec<(usize, usize)> = Vec::new();
     for span in accented_spans {
@@ -270,10 +272,10 @@ fn renderuj_wers_z_akcentami(wers: &Wers, color: Option<Color>) -> String {
             merged_spans.push(span);
         }
     }
-    
+
     let mut result = String::new();
     let mut last_idx = 0;
-    
+
     for &(start, end) in &merged_spans {
         if start > last_idx {
             let chunk = &text[last_idx..start];

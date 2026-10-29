@@ -1,6 +1,6 @@
+use crate::fonetyka::czy_głoska_samogłoska;
 /// Odpowiednik internal/slowo w języku Rust.
 use crate::rym;
-use crate::fonetyka::czy_głoska_samogłoska;
 
 #[derive(Clone, Debug)]
 pub struct Słowo {
@@ -13,7 +13,10 @@ pub struct Słowo {
 }
 
 pub fn czy_samogłoska(r: char) -> bool {
-    matches!(r.to_ascii_lowercase(), 'a' | 'ą' | 'e' | 'ę' | 'i' | 'o' | 'ó' | 'u' | 'y')
+    matches!(
+        r.to_ascii_lowercase(),
+        'a' | 'ą' | 'e' | 'ę' | 'i' | 'o' | 'ó' | 'u' | 'y'
+    )
 }
 
 pub fn czy_spółgłoska(r: char) -> bool {
@@ -34,7 +37,11 @@ pub fn nowe_słowo(tekst: &str) -> Słowo {
 
 impl Słowo {
     pub fn klucz_bucketa(&self) -> String {
-        let samogłoski: Vec<&String> = self.głoski.iter().filter(|g| czy_głoska_samogłoska(g)).collect();
+        let samogłoski: Vec<&String> = self
+            .głoski
+            .iter()
+            .filter(|g| czy_głoska_samogłoska(g))
+            .collect();
         let start = samogłoski.len().saturating_sub(2);
         let wybrane = &samogłoski[start..];
 
@@ -54,7 +61,11 @@ impl Słowo {
     }
 
     pub fn klucz_bucketa_id(&self) -> usize {
-        let samogłoski: Vec<&String> = self.głoski.iter().filter(|g| czy_głoska_samogłoska(g)).collect();
+        let samogłoski: Vec<&String> = self
+            .głoski
+            .iter()
+            .filter(|g| czy_głoska_samogłoska(g))
+            .collect();
         let start = samogłoski.len().saturating_sub(2);
         let wybrane = &samogłoski[start..];
 
@@ -81,7 +92,10 @@ impl Słowo {
 
     pub fn sylaba_spans(&self) -> Vec<(usize, usize)> {
         let text = &self.oryginalne;
-        let chars: Vec<(usize, char)> = text.char_indices().filter(|(_, c)| c.is_alphabetic() || "ąęśćżźńłóĄĘŚĆŻŹŃŁÓ".contains(*c)).collect();
+        let chars: Vec<(usize, char)> = text
+            .char_indices()
+            .filter(|(_, c)| c.is_alphabetic() || "ąęśćżźńłóĄĘŚĆŻŹŃŁÓ".contains(*c))
+            .collect();
         if chars.is_empty() {
             return vec![(0, text.len())];
         }
@@ -90,22 +104,25 @@ impl Słowo {
         let mut char_idx = 0;
 
         for syl in &self.sylaby {
-            let syl_chars_len: usize = syl.iter().map(|p| {
-                if p.ends_with('ⁱ') || p.ends_with('ʲ') {
-                    let base = p.trim_end_matches(|c| c == 'ⁱ' || c == 'ʲ');
-                    base.chars().count() + 1
-                } else {
-                    match p.as_str() {
-                        "sz" | "cz" | "rz" | "ch" | "dz" | "dź" | "dż" => 2,
-                        "ʲ" | "ⁱ" | "ᵘ" => 0,
-                        other => other.chars().count(),
+            let syl_chars_len: usize = syl
+                .iter()
+                .map(|p| {
+                    if p.ends_with('ⁱ') || p.ends_with('ʲ') {
+                        let base = p.trim_end_matches(|c| c == 'ⁱ' || c == 'ʲ');
+                        base.chars().count() + 1
+                    } else {
+                        match p.as_str() {
+                            "sz" | "cz" | "rz" | "ch" | "dz" | "dź" | "dż" => 2,
+                            "ʲ" | "ⁱ" | "ᵘ" => 0,
+                            other => other.chars().count(),
+                        }
                     }
-                }
-            }).sum();
+                })
+                .sum();
 
             let start_char = char_idx;
             let end_char = (char_idx + syl_chars_len).min(chars.len());
-            
+
             if start_char < chars.len() {
                 let start_byte = chars[start_char].0;
                 let end_byte = if end_char < chars.len() {
@@ -124,9 +141,8 @@ impl Słowo {
 }
 
 pub fn czy_rymują(s1: &Słowo, s2: &Słowo) -> (bool, i32, i32) {
-    let num_vowels = |s: &Słowo| -> usize {
-        s.głoski.iter().filter(|g| czy_głoska_samogłoska(g)).count()
-    };
+    let num_vowels =
+        |s: &Słowo| -> usize { s.głoski.iter().filter(|g| czy_głoska_samogłoska(g)).count() };
 
     let n1 = num_vowels(s1);
     let n2 = num_vowels(s2);
@@ -156,7 +172,11 @@ mod tests {
     fn test_mama_mamama_bucket() {
         let s1 = nowe_słowo("mama");
         let s2 = nowe_słowo("mamama");
-        println!("mama bucket: {}, mamama bucket: {}", s1.klucz_bucketa(), s2.klucz_bucketa());
+        println!(
+            "mama bucket: {}, mamama bucket: {}",
+            s1.klucz_bucketa(),
+            s2.klucz_bucketa()
+        );
         assert_eq!(s1.klucz_bucketa(), s2.klucz_bucketa());
         assert_eq!(s1.rym_zenski, s2.rym_zenski);
         let (ok1, _, _) = czy_rymują(&s1, &s2);

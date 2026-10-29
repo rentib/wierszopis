@@ -19,7 +19,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Rym męski: {}", analiza.rym_meski.concat());
             println!("Rym żeński: {}", analiza.rym_zenski.concat());
         }
-        args::Komenda::Analizuj { sciezka, szczegoly, .. } => {
+        args::Komenda::Analizuj {
+            sciezka, szczegoly, ..
+        } => {
             if let Some(p) = sciezka {
                 let f = File::open(p)?;
                 analizator::analizuj_strumien(f, szczegoly)?;
@@ -31,10 +33,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             tui::uruchom_tui()?;
         }
         args::Komenda::BudujIndeks { plik, .. } => {
-            let csv_path = plik.or_else(slownik::pobierz_sciezke_slownika)
-                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Nie podano pliku słownika CSV i nie znaleziono domyślnego w XDG."))?;
-            let bin_path = slownik::pobierz_sciezke_indeksu()
-                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Nie można ustalić ścieżki indeksu binarnego w XDG."))?;
+            let csv_path = plik
+                .or_else(slownik::pobierz_sciezke_slownika)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "Nie podano pliku słownika CSV i nie znaleziono domyślnego w XDG.",
+                    )
+                })?;
+            let bin_path = slownik::pobierz_sciezke_indeksu().ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "Nie można ustalić ścieżki indeksu binarnego w XDG.",
+                )
+            })?;
 
             println!("Budowanie indeksu z {:?} do {:?}...", csv_path, bin_path);
             let start = std::time::Instant::now();

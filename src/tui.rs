@@ -1,25 +1,26 @@
 /// Moduł interaktywnego rymownika TUI z asynchronicznym wyszukiwaniem (jobs) i zerowym opóźnieniem inputu.
 use crate::indeks::WpisSlownika;
-use crate::slowo;
 use crate::slownik;
+use crate::slowo;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
-    Terminal,
 };
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::{
+    Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
-    mpsc, Arc,
+    mpsc,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -32,7 +33,10 @@ struct FilterDef {
 }
 
 const FILTRY: &[FilterDef] = &[
-    FilterDef { nazwa: "Wszystkie", match_fn: |_| true },
+    FilterDef {
+        nazwa: "Wszystkie",
+        match_fn: |_| true,
+    },
     FilterDef {
         nazwa: "Rzeczownik",
         match_fn: |pos| {
@@ -44,7 +48,21 @@ const FILTRY: &[FilterDef] = &[
         nazwa: "Czasownik",
         match_fn: |pos| {
             let p = pos.to_lowercase();
-            p == "verb" || p == "fin" || p == "bedzie" || p == "inf" || p == "praet" || p == "impt" || p == "ger" || p == "pact" || p == "ppas" || p == "winien" || p == "pred" || p == "imps" || p == "pcon" || p == "pant" || p.starts_with("verb")
+            p == "verb"
+                || p == "fin"
+                || p == "bedzie"
+                || p == "inf"
+                || p == "praet"
+                || p == "impt"
+                || p == "ger"
+                || p == "pact"
+                || p == "ppas"
+                || p == "winien"
+                || p == "pred"
+                || p == "imps"
+                || p == "pcon"
+                || p == "pant"
+                || p.starts_with("verb")
         },
     },
     FilterDef {
@@ -227,7 +245,8 @@ pub fn uruchom_tui() -> Result<(), io::Error> {
                 search_duration = msg.duration;
 
                 let mut rebuilt = Vec::new();
-                let max_cost = worker_results.values()
+                let max_cost = worker_results
+                    .values()
                     .flat_map(|buckets| buckets.iter().enumerate())
                     .filter(|(_, b)| !b.is_empty())
                     .map(|(c, _)| c)
@@ -462,7 +481,8 @@ pub fn uruchom_tui() -> Result<(), io::Error> {
                         KeyCode::Char('d') => {
                             let half = max_widoczne / 2;
                             if !przefiltrowane.is_empty() {
-                                wybrany_indeks = (wybrany_indeks + half).min(przefiltrowane.len() - 1);
+                                wybrany_indeks =
+                                    (wybrany_indeks + half).min(przefiltrowane.len() - 1);
                                 if wybrany_indeks >= okno_start + max_widoczne {
                                     okno_start = wybrany_indeks - max_widoczne + 1;
                                 }
@@ -477,7 +497,8 @@ pub fn uruchom_tui() -> Result<(), io::Error> {
                         }
                         KeyCode::Char('f') => {
                             if !przefiltrowane.is_empty() {
-                                wybrany_indeks = (wybrany_indeks + max_widoczne).min(przefiltrowane.len() - 1);
+                                wybrany_indeks =
+                                    (wybrany_indeks + max_widoczne).min(przefiltrowane.len() - 1);
                                 if wybrany_indeks >= okno_start + max_widoczne {
                                     okno_start = wybrany_indeks - max_widoczne + 1;
                                 }
@@ -490,7 +511,9 @@ pub fn uruchom_tui() -> Result<(), io::Error> {
                             }
                         }
                         KeyCode::Char('n') => {
-                            if !przefiltrowane.is_empty() && wybrany_indeks < przefiltrowane.len() - 1 {
+                            if !przefiltrowane.is_empty()
+                                && wybrany_indeks < przefiltrowane.len() - 1
+                            {
                                 wybrany_indeks += 1;
                                 if wybrany_indeks >= okno_start + max_widoczne {
                                     okno_start = wybrany_indeks - max_widoczne + 1;
@@ -541,8 +564,14 @@ pub fn uruchom_tui() -> Result<(), io::Error> {
                             }
                         }
                         KeyCode::Tab => {
-                            let dir = if key.modifiers.contains(KeyModifiers::SHIFT) { -1 } else { 1 };
-                            filtr_index = ((filtr_index as isize + dir + FILTRY.len() as isize) % FILTRY.len() as isize) as usize;
+                            let dir = if key.modifiers.contains(KeyModifiers::SHIFT) {
+                                -1
+                            } else {
+                                1
+                            };
+                            filtr_index = ((filtr_index as isize + dir + FILTRY.len() as isize)
+                                % FILTRY.len() as isize)
+                                as usize;
                             wybrany_indeks = 0;
                             okno_start = 0;
                             status_message.clear();
@@ -574,7 +603,9 @@ pub fn uruchom_tui() -> Result<(), io::Error> {
                             }
                         }
                         KeyCode::Down => {
-                            if !przefiltrowane.is_empty() && wybrany_indeks < przefiltrowane.len() - 1 {
+                            if !przefiltrowane.is_empty()
+                                && wybrany_indeks < przefiltrowane.len() - 1
+                            {
                                 wybrany_indeks += 1;
                                 if wybrany_indeks >= okno_start + max_widoczne {
                                     okno_start = wybrany_indeks - max_widoczne + 1;
@@ -589,7 +620,8 @@ pub fn uruchom_tui() -> Result<(), io::Error> {
                         }
                         KeyCode::PageDown => {
                             if !przefiltrowane.is_empty() {
-                                wybrany_indeks = (wybrany_indeks + max_widoczne).min(przefiltrowane.len() - 1);
+                                wybrany_indeks =
+                                    (wybrany_indeks + max_widoczne).min(przefiltrowane.len() - 1);
                                 if wybrany_indeks >= okno_start + max_widoczne {
                                     okno_start = wybrany_indeks - max_widoczne + 1;
                                 }
@@ -785,7 +817,9 @@ fn queue_search(
             let mut last_flush = Instant::now();
             let flush_interval = Duration::from_millis(50);
 
-            let flush = |batch: &mut Vec<WynikRymu>, buckets: &mut Vec<Vec<WynikRymu>>, seen: &mut HashSet<String>| {
+            let flush = |batch: &mut Vec<WynikRymu>,
+                         buckets: &mut Vec<Vec<WynikRymu>>,
+                         seen: &mut HashSet<String>| {
                 if batch.is_empty() {
                     return;
                 }

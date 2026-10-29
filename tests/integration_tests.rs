@@ -93,7 +93,8 @@ fn test_sylaby_plik(skan_path: &str, oczekiwane_sylaby: usize) {
         }
         let w = wers::nowy_wers(&line);
         assert_eq!(
-            w.liczba_sylab, oczekiwane_sylaby,
+            w.liczba_sylab,
+            oczekiwane_sylaby,
             "Plik {} linia {} ('{}'): oczekiwano {} sylab, otrzymano {}",
             skan_path,
             idx + 1,
