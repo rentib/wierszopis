@@ -29,7 +29,29 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
 
     for line in buf_reader.lines() {
         let line = line?;
-        wersy.push(wers::nowy_wers(&line));
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") || trimmed.starts_with('#') {
+            continue;
+        }
+
+        let mut comment_idx = None;
+        if let Some(idx) = line.find("//") {
+            comment_idx = Some(idx);
+        }
+        if let Some(idx) = line.find('#') {
+            comment_idx = match comment_idx {
+                Some(existing) => Some(std::cmp::min(existing, idx)),
+                None => Some(idx),
+            };
+        }
+
+        let clean_line = if let Some(idx) = comment_idx {
+            &line[..idx]
+        } else {
+            &line
+        };
+
+        wersy.push(wers::nowy_wers(clean_line));
     }
 
     #[allow(dead_code)]
@@ -372,5 +394,19 @@ fn wyróżnij_akcent(s: &str, color: Option<Color>) -> String {
         format!("{}", s.with(col).underlined())
     } else {
         format!("{}", s.underlined())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_analizuj_strumien_komentarze() {
+        let input = "# Komentarz python\n// Komentarz C\n   # Komentarz z wcięciem\nLitwo! Ojczyzno moja! # epopeja\nA wieża ciśnień // komentarz inline\n";
+        let cursor = Cursor::new(input.as_bytes());
+        let result = analizuj_strumien(cursor, false);
+        assert!(result.is_ok());
     }
 }
