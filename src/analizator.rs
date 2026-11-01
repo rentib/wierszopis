@@ -11,7 +11,7 @@ impl Analizator {
     }
 }
 
-const PALETA_KOLORÓW: &[u8] = &[160, 28, 166, 27, 93, 30, 124, 34, 208, 21, 54, 37];
+const PALETA_KOLORÓW: &[u8] = &[160, 28, 166, 27, 93, 30, 124, 34, 208, 21, 54, 37, 220];
 
 #[allow(dead_code)]
 struct ZapisWersu {
@@ -54,6 +54,8 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
         });
     }
 
+    let mut dsu: Vec<usize> = (0..zapisane.len()).collect();
+
     let mut start = 0;
     while start < zapisane.len() {
         if zapisane[start].wers.oryginalne.is_empty() {
@@ -90,13 +92,24 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
             }
 
             if let Some(j) = best_j {
-                let group_id = std::cmp::min(zapisane[j].linenr, zapisane[i].linenr);
-                zapisane[i].kolor = group_id;
+                let mut root_i = i;
+                while dsu[root_i] != root_i {
+                    root_i = dsu[root_i];
+                }
+
+                let mut root_j = j;
+                while dsu[root_j] != root_j {
+                    root_j = dsu[root_j];
+                }
+
+                if root_i != root_j {
+                    dsu[root_i] = root_j;
+                }
+
                 zapisane[i].koszt = min_koszt;
                 zapisane[i].max = best_max;
                 zapisane[i].ma_rym = true;
 
-                zapisane[j].kolor = group_id;
                 zapisane[j].koszt = min_koszt;
                 zapisane[j].max = best_max;
                 zapisane[j].ma_rym = true;
@@ -106,23 +119,77 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
         start = end;
     }
 
-    let mut unikalne_kolory_set: std::collections::BTreeSet<usize> =
-        std::collections::BTreeSet::new();
-    for z in &zapisane {
-        if z.kolor != 0 {
-            unikalne_kolory_set.insert(z.kolor);
+    for i in 0..zapisane.len() {
+        if zapisane[i].ma_rym {
+            let mut root = i;
+            while dsu[root] != root {
+                root = dsu[root];
+            }
+            zapisane[i].kolor = root + 1;
+        } else {
+            zapisane[i].kolor = 0;
         }
+    }
+
+    let k_dist = 6;
+
+    let mut groups_in_order = Vec::new();
+    let mut seen_groups = std::collections::HashSet::new();
+    for z in &zapisane {
+        if z.kolor != 0 && seen_groups.insert(z.kolor) {
+            groups_in_order.push(z.kolor);
+        }
+    }
+
+    let mut adjacencies: std::collections::HashMap<usize, std::collections::HashSet<usize>> =
+        std::collections::HashMap::new();
+
+    for i in 0..zapisane.len() {
+        let g1 = zapisane[i].kolor;
+        if g1 == 0 {
+            continue;
+        }
+
+        let start_w = i.saturating_sub(k_dist);
+        let end_w = std::cmp::min(zapisane.len() - 1, i + k_dist);
+
+        for j in start_w..=end_w {
+            if i == j {
+                continue;
+            }
+            let g2 = zapisane[j].kolor;
+            if g2 != 0 && g1 != g2 {
+                adjacencies.entry(g1).or_default().insert(g2);
+                adjacencies.entry(g2).or_default().insert(g1);
+            }
+        }
+    }
+
+    let mut group_to_paleta_idx = std::collections::HashMap::new();
+    for &g in &groups_in_order {
+        let mut forbidden = std::collections::HashSet::new();
+        if let Some(neighbors) = adjacencies.get(&g) {
+            for &n in neighbors {
+                if let Some(&pal_idx) = group_to_paleta_idx.get(&n) {
+                    forbidden.insert(pal_idx);
+                }
+            }
+        }
+        let mut color_idx = 0;
+        while forbidden.contains(&(color_idx % PALETA_KOLORÓW.len()))
+            && color_idx < PALETA_KOLORÓW.len()
+        {
+            color_idx += 1;
+        }
+        group_to_paleta_idx.insert(g, color_idx % PALETA_KOLORÓW.len());
     }
 
     let mut unikalne_kolory: std::collections::HashMap<usize, (usize, usize)> =
         std::collections::HashMap::new();
-    let mut paleta_idx = 0;
-
-    for col in unikalne_kolory_set {
-        let num = paleta_idx + 1;
-        let idx = paleta_idx % PALETA_KOLORÓW.len();
-        paleta_idx += 1;
-        unikalne_kolory.insert(col, (num, idx));
+    for (i, &g) in groups_in_order.iter().enumerate() {
+        let num = i + 1;
+        let pal_idx = group_to_paleta_idx[&g];
+        unikalne_kolory.insert(g, (num, pal_idx));
     }
 
     let mut total_niepustych = 0;
