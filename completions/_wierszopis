@@ -1,0 +1,46 @@
+#compdef wierszopis
+
+_wierszopis() {
+    local -a subcommands
+    subcommands=(
+        'wyraz:Pokazuje szczegółową analizę głosek i sylab pojedynczego słowa'
+        'analizuj:Analizuje sylaby, rymy i koloruje wersy ze standardowego wejścia lub pliku'
+        'rymuj:Uruchamia interaktywny rymownik TUI'
+        'buduj-indeks:Buduje i zapisuje szybki indeks binarny słownika'
+    )
+
+    if (( CURRENT == 2 )); then
+        _describe -t subcommands 'komenda' subcommands
+        _arguments \
+            '(-h --pomoc)'{-h,--pomoc}'[Wyświetla pomoc]' \
+            '(-v --wersja)'{-v,--wersja}'[Wyświetla wersję programu]'
+        return
+    fi
+
+    case "$words[2]" in
+        wyraz)
+            _arguments \
+                '(-h --pomoc)'{-h,--pomoc}'[Wyświetla pomoc]' \
+                '1:słowo:'
+            ;;
+        analizuj)
+            _arguments \
+                '(-h --pomoc)'{-h,--pomoc}'[Wyświetla pomoc]' \
+                '--szczegoly[Pokaż szczegóły (koszty rymów i numery kolorów)]' \
+                '*:plik:_files'
+            ;;
+        rymuj)
+            _arguments \
+                '(-h --pomoc)'{-h,--pomoc}'[Wyświetla pomoc]' \
+                '--workers[Liczba workerów równoległych]:liczba:'
+            ;;
+        buduj-indeks)
+            _arguments \
+                '(-h --pomoc)'{-h,--pomoc}'[Wyświetla pomoc]' \
+                '--workers[Liczba workerów równoległych]:liczba:' \
+                '--plik[Ścieżka do pliku słownika CSV]:plik:_files'
+            ;;
+    esac
+}
+
+_wierszopis "$@"
