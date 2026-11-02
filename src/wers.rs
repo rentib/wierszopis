@@ -99,6 +99,68 @@ pub fn wyznacz_akcent_wersu(słowa: &[Słowo]) -> String {
     word_accents.concat()
 }
 
+pub fn kandydaci_średniówki(słowa: &[Słowo], liczba_sylab: usize) -> Vec<(String, i32)> {
+    if liczba_sylab < 9 || słowa.len() < 2 {
+        return vec![];
+    }
+
+    let mut syl_counts = Vec::with_capacity(słowa.len());
+    let mut sum = 0;
+    for sw in słowa {
+        sum += sw.sylaby.len();
+        syl_counts.push(sum);
+    }
+
+    let akcent = wyznacz_akcent_wersu(słowa);
+    let mut candidates = Vec::new();
+
+    for k in 0..(słowa.len() - 1) {
+        let x = syl_counts[k];
+        let y = liczba_sylab - x;
+
+        if x < 3 || y < 3 {
+            continue;
+        }
+
+        // Balance / asymmetry cost: abs(x - y) * cost
+        let asymmetry = (x as i32 - y as i32).abs();
+        let mut score = 100 - (asymmetry * 5);
+
+        match (liczba_sylab, x, y) {
+            (13, 7, 6) | (13, 6, 7) => score += 30,
+            (13, 8, 5) | (13, 5, 8) => score += 15,
+            (11, 5, 6) | (11, 6, 5) => score += 30,
+            (11, 4, 7) | (11, 7, 4) => score += 15,
+            (10, 5, 5) => score += 30,
+            (9, 5, 4) | (9, 4, 5) => score += 30,
+            _ => {}
+        }
+
+        if x > 0 && x <= akcent.len() {
+            let char_at_x = akcent.chars().nth(x - 1).unwrap_or('s');
+            if char_at_x == 'S' {
+                score -= 20;
+            } else {
+                score += 10;
+            }
+        }
+
+        let label = format!("{}+{}", x, y);
+        candidates.push((label, score));
+    }
+
+    candidates
+}
+
+pub fn wyznacz_średniówkę(słowa: &[Słowo], liczba_sylab: usize) -> String {
+    let cands = kandydaci_średniówki(słowa, liczba_sylab);
+    if let Some((best_label, _)) = cands.into_iter().max_by_key(|&(_, score)| score) {
+        best_label
+    } else {
+        "-".to_string()
+    }
+}
+
 pub fn nowy_wers(tekst: &str) -> Wers {
     let surowy = tekst.to_string();
     let czyste = tekst.trim().to_string();
@@ -155,6 +217,7 @@ pub fn nowy_wers(tekst: &str) -> Wers {
     }
 
     let akcent_wersu = wyznacz_akcent_wersu(&słowa);
+    let średniówka = wyznacz_średniówkę(&słowa, całkowita_liczba_sylab);
 
     Wers {
         surowy_tekst: surowy,
@@ -164,7 +227,7 @@ pub fn nowy_wers(tekst: &str) -> Wers {
         akcent_wersu,
         rym_meski,
         rym_zenski,
-        średniówka: "-".to_string(),
+        średniówka,
     }
 }
 
@@ -278,6 +341,19 @@ mod tests {
         assert_eq!(nowy_wers("bez nich").akcent_wersu, "Ss");
         assert_eq!(nowy_wers("do was").akcent_wersu, "Ss");
         assert_eq!(nowy_wers("nie pomaga").akcent_wersu, "ssSs");
+    }
+
+    #[test]
+    fn test_średniówka() {
+        let w = nowy_wers("Litwo! Ojczyzno moja! ty jesteś jak zdrowie");
+        assert_eq!(w.liczba_sylab, 13);
+        assert_eq!(w.średniówka, "7+6");
+
+        // 11 sylab, np. 5+6 or 6+5
+        let w11 = nowy_wers("Któryś jest w niebie, bądź pochwalon Panie");
+        assert_eq!(w11.liczba_sylab, 11);
+        // Sprawdzamy czy wybiera zrównoważony podział (np. 5+6 lub 6+5)
+        assert!(w11.średniówka == "5+6" || w11.średniówka == "6+5");
     }
 }
 

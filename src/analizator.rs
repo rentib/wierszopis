@@ -78,67 +78,132 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
 
     let mut dsu: Vec<usize> = (0..zapisane.len()).collect();
 
-    let mut start = 0;
-    while start < zapisane.len() {
-        if zapisane[start].wers.oryginalne.is_empty() {
-            start += 1;
+    for i in 0..zapisane.len() {
+        if zapisane[i].wers.oryginalne.is_empty() {
             continue;
         }
-        let mut end = start;
-        while end < zapisane.len() && !zapisane[end].wers.oryginalne.is_empty() {
-            end += 1;
+        let a_wers = &zapisane[i].wers;
+        if a_wers.rym_meski.is_empty() && a_wers.rym_zenski.is_empty() {
+            continue;
         }
 
-        for i in start..end {
-            let a_wers = &zapisane[i].wers;
-            if a_wers.rym_meski.is_empty() && a_wers.rym_zenski.is_empty() {
+        let mut best_j = None;
+        let mut min_koszt = i32::MAX;
+        let mut best_max = 0;
+
+        for j in 0..i {
+            if zapisane[j].wers.oryginalne.is_empty() {
+                continue;
+            }
+            let b_wers = &zapisane[j].wers;
+            if b_wers.rym_meski.is_empty() && b_wers.rym_zenski.is_empty() {
                 continue;
             }
 
-            let mut best_j = None;
-            let mut min_koszt = i32::MAX;
-            let mut best_max = 0;
-
-            for j in start..i {
-                let b_wers = &zapisane[j].wers;
-                if b_wers.rym_meski.is_empty() && b_wers.rym_zenski.is_empty() {
-                    continue;
-                }
-
-                let (ok, koszt, max_k) = wers::czy_rymują(b_wers, a_wers);
-                if ok && koszt < min_koszt {
-                    min_koszt = koszt;
-                    best_max = max_k;
-                    best_j = Some(j);
-                }
-            }
-
-            if let Some(j) = best_j {
-                let mut root_i = i;
-                while dsu[root_i] != root_i {
-                    root_i = dsu[root_i];
-                }
-
-                let mut root_j = j;
-                while dsu[root_j] != root_j {
-                    root_j = dsu[root_j];
-                }
-
-                if root_i != root_j {
-                    dsu[root_i] = root_j;
-                }
-
-                zapisane[i].koszt = min_koszt;
-                zapisane[i].max = best_max;
-                zapisane[i].ma_rym = true;
-
-                zapisane[j].koszt = min_koszt;
-                zapisane[j].max = best_max;
-                zapisane[j].ma_rym = true;
+            let (ok, koszt, max_k) = wers::czy_rymują(b_wers, a_wers);
+            if ok && koszt < min_koszt {
+                min_koszt = koszt;
+                best_max = max_k;
+                best_j = Some(j);
             }
         }
 
-        start = end;
+        if let Some(j) = best_j {
+            let mut root_i = i;
+            while dsu[root_i] != root_i {
+                root_i = dsu[root_i];
+            }
+
+            let mut root_j = j;
+            while dsu[root_j] != root_j {
+                root_j = dsu[root_j];
+            }
+
+            if root_i != root_j {
+                dsu[root_i] = root_j;
+            }
+
+            zapisane[i].koszt = min_koszt;
+            zapisane[i].max = best_max;
+            zapisane[i].ma_rym = true;
+
+            zapisane[j].koszt = min_koszt;
+            zapisane[j].max = best_max;
+            zapisane[j].ma_rym = true;
+        }
+    }
+
+    // Context-aware optimization of średniówka across the poem
+    let mut non_empty_indices = Vec::new();
+    for (i, z) in zapisane.iter().enumerate() {
+        if !z.wers.oryginalne.is_empty() {
+            non_empty_indices.push(i);
+        }
+    }
+
+    if !non_empty_indices.is_empty() {
+        let mut poem_candidates: Vec<Vec<(String, i32)>> = Vec::new();
+        for &i in &non_empty_indices {
+            let w = &zapisane[i].wers;
+            let cands = wers::kandydaci_średniówki(&w.słowa, w.liczba_sylab);
+            poem_candidates.push(cands);
+        }
+
+        let mut current_best: Vec<String> = poem_candidates.iter().map(|cands| {
+            if let Some((best_label, _)) = cands.iter().max_by_key(|&(_, score)| score) {
+                best_label.clone()
+            } else {
+                "-".to_string()
+            }
+        }).collect();
+
+        for _iter in 0..2 {
+            let mut next_best = current_best.clone();
+            for (idx, cands) in poem_candidates.iter().enumerate() {
+                if cands.is_empty() {
+                    continue;
+                }
+                let mut best_label = current_best[idx].clone();
+                let mut max_total_score = i32::MIN;
+
+                for (label, base_score) in cands {
+                    let mut total_score = *base_score;
+
+                    for n_offset in -2..=2 {
+                        if n_offset == 0 { continue; }
+                        let n_idx = idx as i32 + n_offset;
+                        if n_idx >= 0 && (n_idx as usize) < current_best.len() {
+                            let neighbor_label = &current_best[n_idx as usize];
+                            if neighbor_label != "-" {
+                                let distance = n_offset.abs();
+                                let weight = match distance {
+                                    1 => 25,
+                                    2 => 15,
+                                    _ => 10,
+                                };
+                                if label == neighbor_label {
+                                    total_score += weight;
+                                } else {
+                                    total_score -= weight / 2;
+                                }
+                            }
+                        }
+                    }
+
+                    if total_score > max_total_score {
+                        max_total_score = total_score;
+                        best_label = label.clone();
+                    }
+                }
+                next_best[idx] = best_label;
+            }
+            current_best = next_best;
+        }
+
+        for (idx, label) in current_best.into_iter().enumerate() {
+            let real_i = non_empty_indices[idx];
+            zapisane[real_i].wers.średniówka = label;
+        }
     }
 
     for i in 0..zapisane.len() {
@@ -226,9 +291,13 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
             continue;
         }
         total_niepustych += 1;
-        let syl_str = z.wers.liczba_sylab.to_string();
-        if syl_str.len() > max_syl_len {
-            max_syl_len = syl_str.len();
+        let syl_content = if szczegoly && z.wers.średniówka != "-" {
+            format!("{} ({})", z.wers.liczba_sylab, z.wers.średniówka)
+        } else {
+            z.wers.liczba_sylab.to_string()
+        };
+        if syl_content.chars().count() > max_syl_len {
+            max_syl_len = syl_content.chars().count();
         }
         let cost_str = if !z.ma_rym {
             "-".to_string()
@@ -269,7 +338,12 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
         numer_niepustego += 1;
 
         let nr_str = format!("{:>width$}", numer_niepustego, width = max_nr_len);
-        let syl_str = format!("{:>width$}", z.wers.liczba_sylab, width = max_syl_len);
+        let syl_content = if szczegoly && z.wers.średniówka != "-" {
+            format!("{} ({})", z.wers.liczba_sylab, z.wers.średniówka)
+        } else {
+            z.wers.liczba_sylab.to_string()
+        };
+        let syl_str = format!("{:>width$}", syl_content, width = max_syl_len);
 
         let etykieta = if szczegoly {
             let cost_str = if !z.ma_rym {
@@ -405,6 +479,14 @@ mod tests {
     #[test]
     fn test_analizuj_strumien_komentarze() {
         let input = "# Komentarz python\n// Komentarz C\n   # Komentarz z wcięciem\nLitwo! Ojczyzno moja! # epopeja\nA wieża ciśnień // komentarz inline\n";
+        let cursor = Cursor::new(input.as_bytes());
+        let result = analizuj_strumien(cursor, false);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_analizuj_strumien_cross_stanza_rym() {
+        let input = "a ja na to\n\njak na lato\n";
         let cursor = Cursor::new(input.as_bytes());
         let result = analizuj_strumien(cursor, false);
         assert!(result.is_ok());
