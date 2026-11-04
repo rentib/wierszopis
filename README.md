@@ -1,12 +1,12 @@
 # Wierszopis
 
-**Wierszopis** to narzędzie CLI oraz TUI (Terminal User Interface) napisane w
-Rust, jako pomoc w analizowaniu i pisaniu wierszy.
+**Wierszopis** to narzędzie CLI oraz TUI napisane w Rust, jako pomoc w
+analizowaniu i pisaniu wierszy.
 
 ## Funkcjonalności
 
 - **Analiza słowa (`wyraz`):** Szczegółowa analiza głosek, samogłosek i sylab dla pojedynczego słowa.
-- **Analiza wersów i sylab (`analizuj`):** Sprawdzanie liczby sylab w wersach oraz wykrywanie rymów na podstawie zaawansowanego silnika fonetycznego (`internal/rym`) z uwzględnieniem kosztów zamian fonetycznych oraz elastycznego dopasowywania rymów męskich i żeńskich.
+- **Analiza wersów i sylab (`analizuj`):** Sprawdzanie liczby sylab w wersach oraz wykrywanie rymów na podstawie silnika fonetycznego z uwzględnieniem kosztów zamian fonetycznych oraz elastycznego dopasowywania rymów męskich i żeńskich.
 - **Interaktywny rymownik (`rymuj`):** Szybki i responsywny terminalowy interfejs TUI pozwalający na wyszukiwanie rymów na żywo.
 - **Zarządzanie słownikiem:** Obsługa zewnętrznego słownika rymów bez obciążania rozmiaru pliku wykonywalnego.
 - **Budowanie indeksu:** Budowanie indeksu z danego słownika w celu zoptymalizowania czasu ładowania.
