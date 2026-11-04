@@ -1,7 +1,10 @@
 use clap::Parser;
 use std::fs::File;
 use std::io;
-use wierszopis::{analizator, args, fonetyka, indeks, slownik, tui};
+use wierszopis::{analizator, fonetyka, indeks, slownik};
+
+mod args;
+mod tui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = args::Cli::parse();

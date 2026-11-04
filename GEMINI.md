@@ -10,6 +10,7 @@
 - **Interactive Rhyme Finder (`rymuj`):** Fast, responsive TUI for real-time rhyme searching.
 - **Dictionary Management:** Support for external rhyme dictionaries without bloating binary size.
 - **Index Building (`buduj-indeks`):** Builds optimized binary dictionary indices for fast startup and lookup.
+- **Core Library & Multi-Binary Architecture:** The core poetry analysis, phonetics, and dictionary logic are extracted into a reusable Rust library crate (`src/lib.rs`), while interfaces (such as CLI/TUI in `src/bin/wierszopis/` and future GUI applications) are implemented as separate binaries using the core library.
 
 ## Building, Running, and Testing
 

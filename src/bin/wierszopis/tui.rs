@@ -1,7 +1,7 @@
 /// Moduł interaktywnego rymownika TUI z asynchronicznym wyszukiwaniem (jobs) i zerowym opóźnieniem inputu.
-use crate::indeks::WpisSlownika;
-use crate::slownik;
-use crate::slowo;
+use wierszopis::indeks::WpisSlownika;
+use wierszopis::slownik;
+use wierszopis::slowo;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -134,7 +134,7 @@ struct DictionaryIndex {
 }
 
 impl DictionaryIndex {
-    fn new(cache: crate::indeks::IndeksCache) -> Self {
+    fn new(cache: wierszopis::indeks::IndeksCache) -> Self {
         DictionaryIndex {
             entries: cache.entries,
             buckets: cache.buckets,

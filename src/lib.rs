@@ -1,9 +1,7 @@
 pub mod analizator;
-pub mod args;
 pub mod fonetyka;
 pub mod indeks;
 pub mod rym;
 pub mod slownik;
 pub mod slowo;
-pub mod tui;
 pub mod wers;
