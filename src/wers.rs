@@ -2,7 +2,7 @@
 use crate::rym;
 use crate::slowo::{self, Słowo};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Wers {
     pub surowy_tekst: String,
     pub oryginalne: String,
@@ -269,6 +269,63 @@ pub fn czy_rymują(w1: &Wers, w2: &Wers) -> (bool, i32, i32) {
     }
 
     (false, 999, 0)
+}
+
+pub fn wyznacz_podswietlone_czesci(wers: &Wers) -> Vec<(String, bool)> {
+    let text = &wers.surowy_tekst;
+    let mut accented_spans = Vec::new();
+
+    let mut search_start = 0;
+    let mut global_syl_idx = 0;
+    for sw in &wers.słowa {
+        if let Some(word_rel_pos) = text[search_start..].find(&sw.oryginalne) {
+            let word_start = search_start + word_rel_pos;
+            let spans = sw.sylaba_spans();
+            for (_i, &(s_start, s_end)) in spans.iter().enumerate() {
+                let akcent_char = wers.akcent_wersu.chars().nth(global_syl_idx).unwrap_or('s');
+                global_syl_idx += 1;
+
+                let is_accented = akcent_char == 'S';
+                if is_accented {
+                    let abs_start = word_start + s_start.min(sw.oryginalne.len());
+                    let abs_end = word_start + s_end.min(sw.oryginalne.len());
+                    if abs_start < abs_end && abs_end <= text.len() {
+                        accented_spans.push((abs_start, abs_end));
+                    }
+                }
+            }
+            search_start = word_start + sw.oryginalne.len();
+        }
+    }
+
+    accented_spans.sort_by_key(|&(start, _)| start);
+    let mut merged_spans: Vec<(usize, usize)> = Vec::new();
+    for span in accented_spans {
+        if let Some(last) = merged_spans.last_mut() {
+            if span.0 <= last.1 {
+                last.1 = last.1.max(span.1);
+            } else {
+                merged_spans.push(span);
+            }
+        } else {
+            merged_spans.push(span);
+        }
+    }
+
+    let mut result = Vec::new();
+    let mut last_idx = 0;
+
+    for &(start, end) in &merged_spans {
+        if start > last_idx {
+            result.push((text[last_idx..start].to_string(), false));
+        }
+        result.push((text[start..end].to_string(), true));
+        last_idx = end;
+    }
+    if last_idx < text.len() {
+        result.push((text[last_idx..].to_string(), false));
+    }
+    result
 }
 
 #[cfg(test)]

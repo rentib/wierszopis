@@ -2,7 +2,7 @@ use crate::fonetyka::czy_głoska_samogłoska;
 /// Odpowiednik internal/slowo w języku Rust.
 use crate::rym;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Słowo {
     pub oryginalne: String,
     pub głoski: Vec<String>,

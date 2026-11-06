@@ -1,5 +1,6 @@
 /// Odpowiednik internal/analizator w języku Rust.
 use crate::wers::{self, Wers};
+#[cfg(feature = "tui")]
 use crossterm::style::{Color, Stylize};
 use std::io::{self, BufRead};
 
@@ -11,8 +12,10 @@ impl Analizator {
     }
 }
 
+#[cfg(feature = "tui")]
 const PALETA_KOLORÓW: &[u8] = &[160, 28, 166, 27, 93, 30, 124, 34, 208, 21, 54, 37, 220];
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct ZapisWersu {
     pub linenr: usize,
     pub kolor: usize,
@@ -189,6 +192,7 @@ impl AnalizaWiersza {
         }
     }
 
+    #[cfg(feature = "tui")]
     pub fn wyznacz_kolory(&self, k_dist: usize) -> (std::collections::HashMap<usize, (usize, usize)>, Vec<usize>) {
         let mut groups_in_order = Vec::new();
         let mut seen_groups = std::collections::HashSet::new();
@@ -251,6 +255,7 @@ impl AnalizaWiersza {
         (unikalne_kolory, groups_in_order)
     }
 
+    #[cfg(feature = "tui")]
     pub fn renderuj(&self, szczegoly: bool) {
         let (unikalne_kolory, _) = self.wyznacz_kolory(6);
 
@@ -369,6 +374,7 @@ impl AnalizaWiersza {
     }
 }
 
+#[cfg(feature = "tui")]
 pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<()> {
     let buf_reader = io::BufReader::new(reader);
     let mut wersy = Vec::new();
@@ -408,6 +414,7 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
     Ok(())
 }
 
+#[cfg(feature = "tui")]
 fn renderuj_wers_z_akcentami(wers: &Wers, color: Option<Color>) -> String {
     let text = &wers.surowy_tekst;
     let mut accented_spans = Vec::new();
@@ -468,6 +475,7 @@ fn renderuj_wers_z_akcentami(wers: &Wers, color: Option<Color>) -> String {
     result
 }
 
+#[cfg(feature = "tui")]
 fn apply_color(s: &str, color: Option<Color>) -> String {
     if let Some(col) = color {
         format!("{}", s.with(col))
@@ -476,6 +484,7 @@ fn apply_color(s: &str, color: Option<Color>) -> String {
     }
 }
 
+#[cfg(feature = "tui")]
 fn wyróżnij_akcent(s: &str, color: Option<Color>) -> String {
     if let Some(col) = color {
         format!("{}", s.with(col).underlined())
@@ -484,7 +493,7 @@ fn wyróżnij_akcent(s: &str, color: Option<Color>) -> String {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tui"))]
 mod tests {
     use super::*;
     use std::io::Cursor;

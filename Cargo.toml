@@ -4,7 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
-ratatui = "0.26"
-crossterm = "0.27"
+clap = { version = "4.4", features = ["derive"], optional = true }
+ratatui = { version = "0.26", optional = true }
+crossterm = { version = "0.27", optional = true }
 unicode-width = "0.1"
+
+[features]
+default = ["cli", "tui"]
+cli = ["dep:clap"]
+tui = ["dep:ratatui", "dep:crossterm"]
+
+[workspace]
+members = [".", "gui"]

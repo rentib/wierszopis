@@ -1,0 +1,6 @@
+[application]
+name = "wierszopis-gui"
+default_platform = "web"
+
+[web.app]
+title = "Wierszopis - Analiza Wersu"
