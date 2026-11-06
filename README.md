@@ -32,3 +32,8 @@ Komendy:
 Wierszopis ładuje słownik z `$XDG_DATA_HOME/wierszopis/slownik.csv`, albo
 z `$XDG_DATA_HOME/wierszopis/slownik.bin` jeśli wcześniej został zbudowany
 indeks.
+
+## Netlify
+
+Jest instancja GUI hostowana na netlify.
+[![Netlify Status](https://api.netlify.com/api/v1/badges/451105ba-ce29-4289-a1dd-8fadfbb7c119/deploy-status)](https://app.netlify.com/projects/wierszopis/deploys)

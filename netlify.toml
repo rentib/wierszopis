@@ -1,0 +1,8 @@
+[build]
+  command = "rustup default stable && cargo install dioxus-cli --locked && cd gui && dx build --release"
+  publish = "target/dx/wierszopis-gui/release/web/public"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
