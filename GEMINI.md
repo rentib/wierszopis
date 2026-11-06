@@ -1,32 +1,37 @@
-# Wierszopis - Project Instructions & Context
+# Wierszopis - Instrukcje i kontekst projektu
 
-## Project Overview
+## Przegląd projektu
 
-**Wierszopis** is a CLI and TUI (Terminal User Interface) tool written in **Rust**, designed to assist poets and writers in analyzing and writing Polish poetry.
+**Wierszopis** to narzędzie CLI oraz TUI napisanego w języku **Rust**, zaprojektowane, aby pomagać poetom i pisarzom w analizowaniu oraz tworzeniu polskojęzycznej poezji.
 
-### Key Features & Architecture
-- **Word Analysis (`wyraz`):** Detailed analysis of phonemes, vowels, and syllables for a single word.
-- **Line & Syllable Analysis (`analizuj`):** Syllable counting, rhyme detection using an advanced phonetic engine (`internal/rym`), phonetic substitution cost calculation, and flexible matching for masculine/feminine rhymes.
-- **Interactive Rhyme Finder (`rymuj`):** Fast, responsive TUI for real-time rhyme searching.
-- **Dictionary Management:** Support for external rhyme dictionaries without bloating binary size.
-- **Index Building (`buduj-indeks`):** Builds optimized binary dictionary indices for fast startup and lookup.
-- **Core Library & Multi-Binary Architecture:** The core poetry analysis, phonetics, and dictionary logic are extracted into a reusable Rust library crate (`src/lib.rs`), while interfaces (such as CLI/TUI in `src/bin/wierszopis/` and future GUI applications) are implemented as separate binaries using the core library.
+### Główne funkcje i architektura
 
-## Building, Running, and Testing
+* **Analiza słowa (`wyraz`):** Szczegółowa analiza fonemów, samogłosek i sylab dla pojedynczego słowa.
+* **Analiza wersu i sylab (`analizuj`):** Liczenie sylab, wykrywanie rymów przy użyciu zaawansowanego silnika fonetycznego (`internal/rym`), obliczanie kosztu substytucji fonetycznej oraz elastyczne dopasowywanie rymów męskich i żeńskich.
+* **Interaktywny wyszukiwarka rymów (`rymuj`):** Szybki i responsywny interfejs TUI do wyszukiwania rymów w czasie rzeczywistym.
+* **Zarządzanie słownikiem:** Obsługa zewnętrznych słowników rymów bez powiększania rozmiaru pliku binarnego.
+* **Budowanie indeksu (`buduj-indeks`):** Tworzenie zoptymalizowanych binarnych indeksów słownika zapewniających szybkie uruchamianie i wyszukiwanie.
+* **Biblioteka rdzenna i architektura wielobinaryczna:** Główna logika analizy poezji, fonetyki i słownika została wydzielona do wielorazowej biblioteki w języku Rust (paczka typu library w `src/lib.rs`), podczas gdy interfejsy (takie jak CLI/TUI w `src/bin/wierszopis/` oraz przyszłe aplikacje GUI) są zaimplementowane jako osobne pliki binarne korzystające z rdzennej biblioteki.
 
-Since Wierszopis is a Rust project, standard `cargo` commands apply:
+## Budowanie, uruchamianie i testowanie
 
-### Build
+Ponieważ Wierszopis jest projektem w języku Rust, mają do niego zastosowanie standardowe polecenia `cargo`:
+
+### Budowanie
+
 ```bash
 cargo build --release
+
 ```
 
-### Run
+### Uruchamianie
+
 ```bash
 cargo run -- <komenda> [opcje]
 ```
 
-Examples:
+Przykłady:
+
 ```bash
 cargo run -- wyraz miłość
 cargo run -- analizuj wiersz.txt
@@ -34,20 +39,22 @@ cargo run -- rymuj
 cargo run -- buduj-indeks --plik slownik.csv
 ```
 
-### Test
+### Testowanie
+
 ```bash
 cargo test
 ```
 
-## Configuration & Dictionary Location
+## Konfiguracja i lokalizacja słownika
 
-Wierszopis expects dictionary files under the XDG data directory:
-- CSV dictionary: `$XDG_DATA_HOME/wierszopis/slownik.csv` (or `~/.local/share/wierszopis/slownik.csv`)
-- Binary index: `$XDG_DATA_HOME/wierszopis/slownik.bin`
+Wierszopis oczekuje plików słownika w katalogu danych XDG:
 
-## Development Conventions
+* Słownik CSV: `$XDG_DATA_HOME/wierszopis/slownik.csv` (lub `~/.local/share/wierszopis/slownik.csv`)
+* Indeks binarny: `$XDG_DATA_HOME/wierszopis/slownik.bin`
 
-- **Language:** Rust (edition 2021+).
-- **Code Style:** Follow standard `cargo fmt` and `cargo clippy` lints.
-- **Error Handling:** Idiomatic Rust error handling (`Result`, custom error types or `anyhow`/`thiserror`).
-- **Modularity:** Clear separation between CLI/TUI interfaces, phonetic engine (`internal/rym`), and dictionary/indexing logic.
+## Konwencje programistyczne
+
+* **Język:** Rust (edycja 2021+).
+* **Styl kodu:** Zgodność ze standardowymi linitami `cargo fmt` oraz `cargo clippy`.
+* **Obsługa błędów:** Idiomatyczna obsługa błędów w Rust (`Result`, własne typy błędów lub `anyhow`/`thiserror`).
+* **Modułowość:** Wyraźny podział pomiędzy interfejsami CLI/TUI, silnikiem fonetycznym (`internal/rym`) oraz logiką słownika i indeksowania.
