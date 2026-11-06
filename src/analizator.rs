@@ -13,138 +13,121 @@ impl Analizator {
 
 const PALETA_KOLORÓW: &[u8] = &[160, 28, 166, 27, 93, 30, 124, 34, 208, 21, 54, 37, 220];
 
-#[allow(dead_code)]
-struct ZapisWersu {
-    linenr: usize,
-    kolor: usize,
-    koszt: i32,
-    max: i32,
-    wers: Wers,
-    ma_rym: bool,
+pub struct ZapisWersu {
+    pub linenr: usize,
+    pub kolor: usize,
+    pub koszt: i32,
+    pub max: i32,
+    pub wers: Wers,
+    pub ma_rym: bool,
 }
 
-pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<()> {
-    let buf_reader = io::BufReader::new(reader);
-    let mut wersy = Vec::new();
+pub struct AnalizaWiersza {
+    pub wersy: Vec<ZapisWersu>,
+}
 
-    for line in buf_reader.lines() {
-        let line = line?;
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("//") || trimmed.starts_with('#') {
-            continue;
+impl AnalizaWiersza {
+    pub fn nowy(wersy_bazowe: Vec<Wers>) -> Self {
+        let mut zapisane = Vec::new();
+        for (idx, w) in wersy_bazowe.into_iter().enumerate() {
+            zapisane.push(ZapisWersu {
+                linenr: idx + 1,
+                kolor: 0,
+                koszt: 0,
+                max: 0,
+                wers: w,
+                ma_rym: false,
+            });
         }
-
-        let mut comment_idx = None;
-        if let Some(idx) = line.find("//") {
-            comment_idx = Some(idx);
-        }
-        if let Some(idx) = line.find('#') {
-            comment_idx = match comment_idx {
-                Some(existing) => Some(std::cmp::min(existing, idx)),
-                None => Some(idx),
-            };
-        }
-
-        let clean_line = if let Some(idx) = comment_idx {
-            &line[..idx]
-        } else {
-            &line
-        };
-
-        wersy.push(wers::nowy_wers(clean_line));
+        AnalizaWiersza { wersy: zapisane }
     }
 
-    #[allow(dead_code)]
-    struct ZapisWersu {
-        linenr: usize,
-        kolor: usize,
-        koszt: i32,
-        max: i32,
-        wers: Wers,
-        ma_rym: bool,
-    }
+    pub fn analizuj_rymy(&mut self) {
+        let mut dsu: Vec<usize> = (0..self.wersy.len()).collect();
 
-    let mut zapisane: Vec<ZapisWersu> = Vec::new();
-    for (idx, w) in wersy.iter().enumerate() {
-        zapisane.push(ZapisWersu {
-            linenr: idx + 1,
-            kolor: 0,
-            koszt: 0,
-            max: 0,
-            wers: w.clone(),
-            ma_rym: false,
-        });
-    }
-
-    let mut dsu: Vec<usize> = (0..zapisane.len()).collect();
-
-    for i in 0..zapisane.len() {
-        if zapisane[i].wers.oryginalne.is_empty() {
-            continue;
-        }
-        let a_wers = &zapisane[i].wers;
-        if a_wers.rym_meski.is_empty() && a_wers.rym_zenski.is_empty() {
-            continue;
-        }
-
-        let mut best_j = None;
-        let mut min_koszt = i32::MAX;
-        let mut best_max = 0;
-
-        for j in 0..i {
-            if zapisane[j].wers.oryginalne.is_empty() {
+        for i in 0..self.wersy.len() {
+            if self.wersy[i].wers.oryginalne.is_empty() {
                 continue;
             }
-            let b_wers = &zapisane[j].wers;
-            if b_wers.rym_meski.is_empty() && b_wers.rym_zenski.is_empty() {
+            let a_wers = &self.wersy[i].wers;
+            if a_wers.rym_meski.is_empty() && a_wers.rym_zenski.is_empty() {
                 continue;
             }
 
-            let (ok, koszt, max_k) = wers::czy_rymują(b_wers, a_wers);
-            if ok && koszt < min_koszt {
-                min_koszt = koszt;
-                best_max = max_k;
-                best_j = Some(j);
+            let mut best_j = None;
+            let mut min_koszt = i32::MAX;
+            let mut best_max = 0;
+
+            for j in 0..i {
+                if self.wersy[j].wers.oryginalne.is_empty() {
+                    continue;
+                }
+                let b_wers = &self.wersy[j].wers;
+                if b_wers.rym_meski.is_empty() && b_wers.rym_zenski.is_empty() {
+                    continue;
+                }
+
+                let (ok, koszt, max_k) = wers::czy_rymują(b_wers, a_wers);
+                if ok && koszt < min_koszt {
+                    min_koszt = koszt;
+                    best_max = max_k;
+                    best_j = Some(j);
+                }
+            }
+
+            if let Some(j) = best_j {
+                let mut root_i = i;
+                while dsu[root_i] != root_i {
+                    root_i = dsu[root_i];
+                }
+
+                let mut root_j = j;
+                while dsu[root_j] != root_j {
+                    root_j = dsu[root_j];
+                }
+
+                if root_i != root_j {
+                    dsu[root_i] = root_j;
+                }
+
+                self.wersy[i].koszt = min_koszt;
+                self.wersy[i].max = best_max;
+                self.wersy[i].ma_rym = true;
+
+                self.wersy[j].koszt = min_koszt;
+                self.wersy[j].max = best_max;
+                self.wersy[j].ma_rym = true;
             }
         }
 
-        if let Some(j) = best_j {
-            let mut root_i = i;
-            while dsu[root_i] != root_i {
-                root_i = dsu[root_i];
+        for i in 0..self.wersy.len() {
+            if self.wersy[i].ma_rym {
+                let mut root = i;
+                while dsu[root] != root {
+                    root = dsu[root];
+                }
+                self.wersy[i].kolor = root + 1;
+            } else {
+                self.wersy[i].kolor = 0;
             }
-
-            let mut root_j = j;
-            while dsu[root_j] != root_j {
-                root_j = dsu[root_j];
-            }
-
-            if root_i != root_j {
-                dsu[root_i] = root_j;
-            }
-
-            zapisane[i].koszt = min_koszt;
-            zapisane[i].max = best_max;
-            zapisane[i].ma_rym = true;
-
-            zapisane[j].koszt = min_koszt;
-            zapisane[j].max = best_max;
-            zapisane[j].ma_rym = true;
         }
     }
 
-    // Context-aware optimization of średniówka across the poem
-    let mut non_empty_indices = Vec::new();
-    for (i, z) in zapisane.iter().enumerate() {
-        if !z.wers.oryginalne.is_empty() {
-            non_empty_indices.push(i);
+    pub fn optymalizuj_średniówki(&mut self) {
+        let mut non_empty_indices = Vec::new();
+        for (i, z) in self.wersy.iter().enumerate() {
+            if !z.wers.oryginalne.is_empty() {
+                non_empty_indices.push(i);
+            }
         }
-    }
 
-    if !non_empty_indices.is_empty() {
+        if non_empty_indices.is_empty() {
+            return;
+        }
+
         let mut poem_candidates: Vec<Vec<(String, i32)>> = Vec::new();
         for &i in &non_empty_indices {
-            let w = &zapisane[i].wers;
+            let w = &self.wersy[i].wers;
             let cands = wers::kandydaci_średniówki(&w.słowa, w.liczba_sylab);
             poem_candidates.push(cands);
         }
@@ -202,157 +185,103 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
 
         for (idx, label) in current_best.into_iter().enumerate() {
             let real_i = non_empty_indices[idx];
-            zapisane[real_i].wers.średniówka = label;
+            self.wersy[real_i].wers.średniówka = label;
         }
     }
 
-    for i in 0..zapisane.len() {
-        if zapisane[i].ma_rym {
-            let mut root = i;
-            while dsu[root] != root {
-                root = dsu[root];
+    pub fn wyznacz_kolory(&self, k_dist: usize) -> (std::collections::HashMap<usize, (usize, usize)>, Vec<usize>) {
+        let mut groups_in_order = Vec::new();
+        let mut seen_groups = std::collections::HashSet::new();
+        for z in &self.wersy {
+            if z.kolor != 0 && seen_groups.insert(z.kolor) {
+                groups_in_order.push(z.kolor);
             }
-            zapisane[i].kolor = root + 1;
-        } else {
-            zapisane[i].kolor = 0;
-        }
-    }
-
-    let k_dist = 6;
-
-    let mut groups_in_order = Vec::new();
-    let mut seen_groups = std::collections::HashSet::new();
-    for z in &zapisane {
-        if z.kolor != 0 && seen_groups.insert(z.kolor) {
-            groups_in_order.push(z.kolor);
-        }
-    }
-
-    let mut adjacencies: std::collections::HashMap<usize, std::collections::HashSet<usize>> =
-        std::collections::HashMap::new();
-
-    for i in 0..zapisane.len() {
-        let g1 = zapisane[i].kolor;
-        if g1 == 0 {
-            continue;
         }
 
-        let start_w = i.saturating_sub(k_dist);
-        let end_w = std::cmp::min(zapisane.len() - 1, i + k_dist);
+        let mut adjacencies: std::collections::HashMap<usize, std::collections::HashSet<usize>> =
+            std::collections::HashMap::new();
 
-        for j in start_w..=end_w {
-            if i == j {
+        for i in 0..self.wersy.len() {
+            let g1 = self.wersy[i].kolor;
+            if g1 == 0 {
                 continue;
             }
-            let g2 = zapisane[j].kolor;
-            if g2 != 0 && g1 != g2 {
-                adjacencies.entry(g1).or_default().insert(g2);
-                adjacencies.entry(g2).or_default().insert(g1);
-            }
-        }
-    }
 
-    let mut group_to_paleta_idx = std::collections::HashMap::new();
-    for &g in &groups_in_order {
-        let mut forbidden = std::collections::HashSet::new();
-        if let Some(neighbors) = adjacencies.get(&g) {
-            for &n in neighbors {
-                if let Some(&pal_idx) = group_to_paleta_idx.get(&n) {
-                    forbidden.insert(pal_idx);
+            let start_w = i.saturating_sub(k_dist);
+            let end_w = std::cmp::min(self.wersy.len() - 1, i + k_dist);
+
+            for j in start_w..=end_w {
+                if i == j {
+                    continue;
+                }
+                let g2 = self.wersy[j].kolor;
+                if g2 != 0 && g1 != g2 {
+                    adjacencies.entry(g1).or_default().insert(g2);
+                    adjacencies.entry(g2).or_default().insert(g1);
                 }
             }
         }
-        let mut color_idx = 0;
-        while forbidden.contains(&(color_idx % PALETA_KOLORÓW.len()))
-            && color_idx < PALETA_KOLORÓW.len()
-        {
-            color_idx += 1;
+
+        let mut group_to_paleta_idx = std::collections::HashMap::new();
+        for &g in &groups_in_order {
+            let mut forbidden = std::collections::HashSet::new();
+            if let Some(neighbors) = adjacencies.get(&g) {
+                for &n in neighbors {
+                    if let Some(&pal_idx) = group_to_paleta_idx.get(&n) {
+                        forbidden.insert(pal_idx);
+                    }
+                }
+            }
+            let mut color_idx = 0;
+            while forbidden.contains(&(color_idx % PALETA_KOLORÓW.len()))
+                && color_idx < PALETA_KOLORÓW.len()
+            {
+                color_idx += 1;
+            }
+            group_to_paleta_idx.insert(g, color_idx % PALETA_KOLORÓW.len());
         }
-        group_to_paleta_idx.insert(g, color_idx % PALETA_KOLORÓW.len());
+
+        let mut unikalne_kolory = std::collections::HashMap::new();
+        for (i, &g) in groups_in_order.iter().enumerate() {
+            let num = i + 1;
+            let pal_idx = group_to_paleta_idx[&g];
+            unikalne_kolory.insert(g, (num, pal_idx));
+        }
+
+        (unikalne_kolory, groups_in_order)
     }
 
-    let mut unikalne_kolory: std::collections::HashMap<usize, (usize, usize)> =
-        std::collections::HashMap::new();
-    for (i, &g) in groups_in_order.iter().enumerate() {
-        let num = i + 1;
-        let pal_idx = group_to_paleta_idx[&g];
-        unikalne_kolory.insert(g, (num, pal_idx));
-    }
+    pub fn renderuj(&self, szczegoly: bool) {
+        let (unikalne_kolory, _) = self.wyznacz_kolory(6);
 
-    let mut total_niepustych = 0;
-    let mut max_syl_len = 1;
-    let mut max_cost_len = 1;
-    let mut max_color_len = 1;
-    let mut max_akcent_len = 1;
-    let mut max_line_width = 1;
+        let mut total_niepustych = 0;
+        let mut max_syl_len = 1;
+        let mut max_cost_len = 1;
+        let mut max_color_len = 1;
+        let mut max_akcent_len = 1;
+        let mut max_line_width = 1;
 
-    for z in &zapisane {
-        if z.wers.oryginalne.is_empty() {
-            continue;
-        }
-        total_niepustych += 1;
-        let syl_content = if szczegoly && z.wers.średniówka != "-" {
-            format!("{} ({})", z.wers.liczba_sylab, z.wers.średniówka)
-        } else {
-            z.wers.liczba_sylab.to_string()
-        };
-        if syl_content.chars().count() > max_syl_len {
-            max_syl_len = syl_content.chars().count();
-        }
-        let cost_str = if !z.ma_rym {
-            "-".to_string()
-        } else {
-            format!("{}/{}", z.koszt, z.max)
-        };
-        if cost_str.len() > max_cost_len {
-            max_cost_len = cost_str.len();
-        }
-        let color_str = if z.kolor == 0 {
-            "-".to_string()
-        } else if let Some(&(num, _)) = unikalne_kolory.get(&z.kolor) {
-            num.to_string()
-        } else {
-            "-".to_string()
-        };
-        if color_str.len() > max_color_len {
-            max_color_len = color_str.len();
-        }
-        let akcent_len = z.wers.akcent_wersu.len();
-        if akcent_len > max_akcent_len {
-            max_akcent_len = akcent_len;
-        }
-        let line_len = z.wers.surowy_tekst.chars().count();
-        if line_len > max_line_width {
-            max_line_width = line_len;
-        }
-    }
-
-    let max_nr_len = total_niepustych.to_string().len();
-
-    let mut numer_niepustego = 0;
-    for z in &zapisane {
-        if z.wers.oryginalne.is_empty() {
-            println!();
-            continue;
-        }
-        numer_niepustego += 1;
-
-        let nr_str = format!("{:>width$}", numer_niepustego, width = max_nr_len);
-        let syl_content = if szczegoly && z.wers.średniówka != "-" {
-            format!("{} ({})", z.wers.liczba_sylab, z.wers.średniówka)
-        } else {
-            z.wers.liczba_sylab.to_string()
-        };
-        let syl_str = format!("{:>width$}", syl_content, width = max_syl_len);
-
-        let etykieta = if szczegoly {
+        for z in &self.wersy {
+            if z.wers.oryginalne.is_empty() {
+                continue;
+            }
+            total_niepustych += 1;
+            let syl_content = if szczegoly && z.wers.średniówka != "-" {
+                format!("{} ({})", z.wers.liczba_sylab, z.wers.średniówka)
+            } else {
+                z.wers.liczba_sylab.to_string()
+            };
+            if syl_content.chars().count() > max_syl_len {
+                max_syl_len = syl_content.chars().count();
+            }
             let cost_str = if !z.ma_rym {
                 "-".to_string()
             } else {
                 format!("{}/{}", z.koszt, z.max)
             };
-            let c_str = format!("{:>width$}", cost_str, width = max_cost_len);
-
+            if cost_str.len() > max_cost_len {
+                max_cost_len = cost_str.len();
+            }
             let color_str = if z.kolor == 0 {
                 "-".to_string()
             } else if let Some(&(num, _)) = unikalne_kolory.get(&z.kolor) {
@@ -360,37 +289,121 @@ pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<(
             } else {
                 "-".to_string()
             };
-            let col_str = format!("{:>width$}", color_str, width = max_color_len);
-            format!("[{}] [{}] [{}] [{}]", nr_str, syl_str, c_str, col_str)
-        } else {
-            format!("[{}] [{}]", nr_str, syl_str)
-        };
+            if color_str.len() > max_color_len {
+                max_color_len = color_str.len();
+            }
+            let akcent_len = z.wers.akcent_wersu.len();
+            if akcent_len > max_akcent_len {
+                max_akcent_len = akcent_len;
+            }
+            let line_len = z.wers.surowy_tekst.chars().count();
+            if line_len > max_line_width {
+                max_line_width = line_len;
+            }
+        }
 
-        let akcent_suffix = if szczegoly {
-            format!(" [{:<width$}]", z.wers.akcent_wersu, width = max_akcent_len)
-        } else {
-            "".to_string()
-        };
+        let max_nr_len = total_niepustych.to_string().len();
 
-        let color = if z.kolor != 0 {
-            if let Some(&(_, paleta_i)) = unikalne_kolory.get(&z.kolor) {
-                Some(Color::AnsiValue(PALETA_KOLORÓW[paleta_i]))
+        let mut numer_niepustego = 0;
+        for z in &self.wersy {
+            if z.wers.oryginalne.is_empty() {
+                println!();
+                continue;
+            }
+            numer_niepustego += 1;
+
+            let nr_str = format!("{:>width$}", numer_niepustego, width = max_nr_len);
+            let syl_content = if szczegoly && z.wers.średniówka != "-" {
+                format!("{} ({})", z.wers.liczba_sylab, z.wers.średniówka)
+            } else {
+                z.wers.liczba_sylab.to_string()
+            };
+            let syl_str = format!("{:>width$}", syl_content, width = max_syl_len);
+
+            let etykieta = if szczegoly {
+                let cost_str = if !z.ma_rym {
+                    "-".to_string()
+                } else {
+                    format!("{}/{}", z.koszt, z.max)
+                };
+                let c_str = format!("{:>width$}", cost_str, width = max_cost_len);
+
+                let color_str = if z.kolor == 0 {
+                    "-".to_string()
+                } else if let Some(&(num, _)) = unikalne_kolory.get(&z.kolor) {
+                    num.to_string()
+                } else {
+                    "-".to_string()
+                };
+                let col_str = format!("{:>width$}", color_str, width = max_color_len);
+                format!("[{}] [{}] [{}] [{}]", nr_str, syl_str, c_str, col_str)
+            } else {
+                format!("[{}] [{}]", nr_str, syl_str)
+            };
+
+            let akcent_suffix = if szczegoly {
+                format!(" [{:<width$}]", z.wers.akcent_wersu, width = max_akcent_len)
+            } else {
+                "".to_string()
+            };
+
+            let color = if z.kolor != 0 {
+                if let Some(&(_, paleta_i)) = unikalne_kolory.get(&z.kolor) {
+                    Some(Color::AnsiValue(PALETA_KOLORÓW[paleta_i]))
+                } else {
+                    None
+                }
             } else {
                 None
-            }
+            };
+
+            let rendered_text = renderuj_wers_z_akcentami(&z.wers, color);
+            let current_width = z.wers.surowy_tekst.chars().count();
+            let padding = if current_width < max_line_width {
+                " ".repeat(max_line_width - current_width)
+            } else {
+                "".to_string()
+            };
+            println!("{} {}{}{}", etykieta, rendered_text, padding, akcent_suffix);
+        }
+    }
+}
+
+pub fn analizuj_strumien(reader: impl io::Read, szczegoly: bool) -> io::Result<()> {
+    let buf_reader = io::BufReader::new(reader);
+    let mut wersy = Vec::new();
+
+    for line in buf_reader.lines() {
+        let line = line?;
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") || trimmed.starts_with('#') {
+            continue;
+        }
+
+        let mut comment_idx = None;
+        if let Some(idx) = line.find("//") {
+            comment_idx = Some(idx);
+        }
+        if let Some(idx) = line.find('#') {
+            comment_idx = match comment_idx {
+                Some(existing) => Some(std::cmp::min(existing, idx)),
+                None => Some(idx),
+            };
+        }
+
+        let clean_line = if let Some(idx) = comment_idx {
+            &line[..idx]
         } else {
-            None
+            &line
         };
 
-        let rendered_text = renderuj_wers_z_akcentami(&z.wers, color);
-        let current_width = z.wers.surowy_tekst.chars().count();
-        let padding = if current_width < max_line_width {
-            " ".repeat(max_line_width - current_width)
-        } else {
-            "".to_string()
-        };
-        println!("{} {}{}{}", etykieta, rendered_text, padding, akcent_suffix);
+        wersy.push(wers::nowy_wers(clean_line));
     }
+
+    let mut analiza = AnalizaWiersza::nowy(wersy);
+    analiza.analizuj_rymy();
+    analiza.optymalizuj_średniówki();
+    analiza.renderuj(szczegoly);
 
     Ok(())
 }
@@ -490,5 +503,17 @@ mod tests {
         let cursor = Cursor::new(input.as_bytes());
         let result = analizuj_strumien(cursor, false);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_analiza_wiersza_metody() {
+        let w1 = wers::nowy_wers("a ja na to");
+        let w2 = wers::nowy_wers("jak na lato");
+        let mut analiza = AnalizaWiersza::nowy(vec![w1, w2]);
+        analiza.analizuj_rymy();
+        analiza.optymalizuj_średniówki();
+        assert!(analiza.wersy[0].ma_rym);
+        assert!(analiza.wersy[1].ma_rym);
+        assert_eq!(analiza.wersy[0].kolor, analiza.wersy[1].kolor);
     }
 }
