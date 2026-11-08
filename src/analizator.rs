@@ -39,6 +39,28 @@ pub enum RodzajSonetu {
     InnySonet,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RodzajWiersza {
+    Sonet(RodzajSonetu),
+    Vilanella,
+}
+
+impl RodzajWiersza {
+    pub fn nazwa(&self) -> &'static str {
+        match self {
+            RodzajWiersza::Sonet(sonet) => match sonet {
+                RodzajSonetu::Szekspirowski => "sonet szekspirowski (elżbietański)",
+                RodzajSonetu::Spenserowski => "sonet spenserowski",
+                RodzajSonetu::Barnifieldowski => "sonet barnifieldowski",
+                RodzajSonetu::WłoskiPetrarkowski => "sonet włoski (petrarkowski)",
+                RodzajSonetu::FrancuskiMarotyczny => "sonet francuski (marotyczny)",
+                RodzajSonetu::InnySonet => "inny rodzaj sonetu",
+            },
+            RodzajWiersza::Vilanella => "vilanella",
+        }
+    }
+}
+
 pub fn usun_podpis(wersy: &mut Vec<Wers>) {
     while let Some(w) = wersy.last() {
         if w.oryginalne.is_empty() {
@@ -227,6 +249,87 @@ impl AnalizaWiersza {
         }
 
         Some(RodzajSonetu::InnySonet)
+    }
+
+    pub fn analizuj_vilanelle(&self) -> Option<()> {
+        let non_empty: Vec<&ZapisWersu> = self.wersy.iter()
+            .filter(|z| !z.wers.oryginalne.is_empty())
+            .collect();
+
+        if non_empty.len() != 19 {
+            return None;
+        }
+
+        let mut stanzas = Vec::new();
+        let mut current_stanza_len = 0;
+        let mut has_verses_in_stanza = false;
+
+        for z in &self.wersy {
+            if z.wers.oryginalne.is_empty() {
+                if has_verses_in_stanza {
+                    stanzas.push(current_stanza_len);
+                    current_stanza_len = 0;
+                    has_verses_in_stanza = false;
+                }
+            } else {
+                current_stanza_len += 1;
+                has_verses_in_stanza = true;
+            }
+        }
+        if has_verses_in_stanza {
+            stanzas.push(current_stanza_len);
+        }
+
+        if stanzas != vec![3, 3, 3, 3, 3, 4] {
+            return None;
+        }
+
+        let check_refrain = |indices: &[usize]| -> Option<(usize, String, String)> {
+            if indices.is_empty() {
+                return None;
+            }
+            let first_w = &non_empty[indices[0]].wers;
+            let syl = first_w.liczba_sylab;
+            let średniówka = first_w.średniówka.clone();
+            let last_word = first_w.słowa.last()?.oryginalne.to_lowercase();
+
+            for &idx in &indices[1..] {
+                let w = &non_empty[idx].wers;
+                if w.liczba_sylab != syl {
+                    return None;
+                }
+                if w.średniówka != średniówka {
+                    return None;
+                }
+                let w_last = w.słowa.last().map(|s| s.oryginalne.to_lowercase())?;
+                if w_last != last_word {
+                    return None;
+                }
+            }
+            Some((syl, średniówka, last_word))
+        };
+
+        let a1_indices = [0, 5, 11, 17];
+        let a2_indices = [2, 8, 14, 18];
+
+        let a1_props = check_refrain(&a1_indices)?;
+        let a2_props = check_refrain(&a2_indices)?;
+
+        if a1_props.2 == a2_props.2 {
+            return None;
+        }
+
+        Some(())
+    }
+
+    pub fn rodzaj_wiersza(&self) -> Option<RodzajWiersza> {
+        if let Some(sonet) = self.analizuj_sonet() {
+            return Some(RodzajWiersza::Sonet(sonet));
+        }
+        if self.analizuj_vilanelle().is_some() {
+            return Some(RodzajWiersza::Vilanella);
+        }
+        None
     }
 
     pub fn analizuj_rymy(&mut self) {
@@ -441,18 +544,8 @@ impl AnalizaWiersza {
 
     #[cfg(feature = "tui")]
     pub fn renderuj(&self, szczegoly: bool) {
-        if szczegoly {
-            if let Some(sonet) = self.analizuj_sonet() {
-                let nazwa = match sonet {
-                    RodzajSonetu::Szekspirowski => "sonet szekspirowski (elżbietański)",
-                    RodzajSonetu::Spenserowski => "sonet spenserowski",
-                    RodzajSonetu::Barnifieldowski => "sonet barnifieldowski",
-                    RodzajSonetu::WłoskiPetrarkowski => "sonet włoski (petrarkowski)",
-                    RodzajSonetu::FrancuskiMarotyczny => "sonet francuski (marotyczny)",
-                    RodzajSonetu::InnySonet => "inny rodzaj sonetu",
-                };
-                println!("Rozpoznano rodzaj wiersza: {}\n", nazwa);
-            }
+        if let Some(rodzaj) = self.rodzaj_wiersza() {
+            println!("Rozpoznano rodzaj wiersza: {}\n", rodzaj.nazwa());
         }
 
         let (unikalne_kolory, _) = self.wyznacz_kolory(6);
@@ -760,6 +853,88 @@ mod tests {
         // 5. Francuski (Marotyczny): abba abba cc dede
         let a_francuski = make_analiza(vec![1, 2, 2, 1, 1, 2, 2, 1, 3, 3, 4, 5, 4, 5]);
         assert_eq!(a_francuski.analizuj_sonet(), Some(RodzajSonetu::FrancuskiMarotyczny));
+    }
+
+    #[test]
+    fn test_rozpoznawanie_vilanelli() {
+        let mut wersy = Vec::new();
+        let r1 = "Refren pierwszy";
+        let r2 = "Refren drugi";
+        let other = "Inny wers";
+
+        wersy.push(wers::nowy_wers(r1));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r2));
+        wersy.push(wers::nowy_wers(""));
+
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r1));
+        wersy.push(wers::nowy_wers(""));
+
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r2));
+        wersy.push(wers::nowy_wers(""));
+
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r1));
+        wersy.push(wers::nowy_wers(""));
+
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r2));
+        wersy.push(wers::nowy_wers(""));
+
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r1));
+        wersy.push(wers::nowy_wers(r2));
+
+        let analiza = AnalizaWiersza::nowy(wersy);
+        assert_eq!(analiza.rodzaj_wiersza(), Some(RodzajWiersza::Vilanella));
+    }
+
+    #[test]
+    fn test_rozpoznawanie_vilanelli_niezalezne_grupy() {
+        let mut wersy = Vec::new();
+        let r1 = "To jest długi refren pierwszy";
+        let r2 = "Krótki drugi";
+        let other = "Jakiś zupełnie inny wers w środku";
+
+        wersy.push(wers::nowy_wers(r1));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r2));
+        wersy.push(wers::nowy_wers(""));
+
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r1));
+        wersy.push(wers::nowy_wers(""));
+
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r2));
+        wersy.push(wers::nowy_wers(""));
+
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r1));
+        wersy.push(wers::nowy_wers(""));
+
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r2));
+        wersy.push(wers::nowy_wers(""));
+
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(other));
+        wersy.push(wers::nowy_wers(r1));
+        wersy.push(wers::nowy_wers(r2));
+
+        let analiza = AnalizaWiersza::nowy(wersy);
+        assert_eq!(analiza.rodzaj_wiersza(), Some(RodzajWiersza::Vilanella));
     }
 
     #[test]
