@@ -39,8 +39,53 @@ pub enum RodzajSonetu {
     InnySonet,
 }
 
+pub fn usun_podpis(wersy: &mut Vec<Wers>) {
+    while let Some(w) = wersy.last() {
+        if w.oryginalne.is_empty() {
+            wersy.pop();
+        } else {
+            break;
+        }
+    }
+
+    if wersy.is_empty() {
+        return;
+    }
+
+    let mut idx = wersy.len() - 1;
+    let mut stanza_start = idx;
+    let mut stanza_len = 0;
+
+    while idx < wersy.len() {
+        if wersy[idx].oryginalne.is_empty() {
+            break;
+        }
+        stanza_start = idx;
+        stanza_len += 1;
+        if idx == 0 {
+            break;
+        }
+        idx -= 1;
+    }
+
+    if stanza_len == 1 {
+        let text = wersy[stanza_start].surowy_tekst.trim_start();
+        if text.starts_with("--") {
+            wersy.truncate(stanza_start);
+            while let Some(w) = wersy.last() {
+                if w.oryginalne.is_empty() {
+                    wersy.pop();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+}
+
 impl AnalizaWiersza {
-    pub fn nowy(wersy_bazowe: Vec<Wers>) -> Self {
+    pub fn nowy(mut wersy_bazowe: Vec<Wers>) -> Self {
+        usun_podpis(&mut wersy_bazowe);
         let mut zapisane = Vec::new();
         for (idx, w) in wersy_bazowe.into_iter().enumerate() {
             zapisane.push(ZapisWersu {
@@ -396,6 +441,20 @@ impl AnalizaWiersza {
 
     #[cfg(feature = "tui")]
     pub fn renderuj(&self, szczegoly: bool) {
+        if szczegoly {
+            if let Some(sonet) = self.analizuj_sonet() {
+                let nazwa = match sonet {
+                    RodzajSonetu::Szekspirowski => "sonet szekspirowski (elżbietański)",
+                    RodzajSonetu::Spenserowski => "sonet spenserowski",
+                    RodzajSonetu::Barnifieldowski => "sonet barnifieldowski",
+                    RodzajSonetu::WłoskiPetrarkowski => "sonet włoski (petrarkowski)",
+                    RodzajSonetu::FrancuskiMarotyczny => "sonet francuski (marotyczny)",
+                    RodzajSonetu::InnySonet => "inny rodzaj sonetu",
+                };
+                println!("Rozpoznano rodzaj wiersza: {}\n", nazwa);
+            }
+        }
+
         let (unikalne_kolory, _) = self.wyznacz_kolory(6);
 
         let mut total_niepustych = 0;
@@ -509,22 +568,6 @@ impl AnalizaWiersza {
                 "".to_string()
             };
             println!("{} {}{}{}", etykieta, rendered_text, padding, akcent_suffix);
-        }
-
-        let (schemat, _) = self.schemat_rymów();
-        if !schemat.is_empty() {
-            println!("\nSchemat rymów: {}", schemat);
-            if let Some(sonet) = self.analizuj_sonet() {
-                let nazwa = match sonet {
-                    RodzajSonetu::Szekspirowski => "sonet szekspirowski (elżbietański)",
-                    RodzajSonetu::Spenserowski => "sonet spenserowski",
-                    RodzajSonetu::Barnifieldowski => "sonet barnifieldowski",
-                    RodzajSonetu::WłoskiPetrarkowski => "sonet włoski (petrarkowski)",
-                    RodzajSonetu::FrancuskiMarotyczny => "sonet francuski (marotyczny)",
-                    RodzajSonetu::InnySonet => "inny rodzaj sonetu",
-                };
-                println!("Rozpoznano rodzaj wiersza: {}", nazwa);
-            }
         }
     }
 }
@@ -717,5 +760,28 @@ mod tests {
         // 5. Francuski (Marotyczny): abba abba cc dede
         let a_francuski = make_analiza(vec![1, 2, 2, 1, 1, 2, 2, 1, 3, 3, 4, 5, 4, 5]);
         assert_eq!(a_francuski.analizuj_sonet(), Some(RodzajSonetu::FrancuskiMarotyczny));
+    }
+
+    #[test]
+    fn test_usun_podpis() {
+        let mut w = vec![
+            wers::nowy_wers("Pierwszy wers"),
+            wers::nowy_wers("Drugi wers"),
+            wers::nowy_wers(""),
+            wers::nowy_wers(""),
+            wers::nowy_wers("-- Jan Kowalski"),
+        ];
+        usun_podpis(&mut w);
+        assert_eq!(w.len(), 2);
+        assert_eq!(w[0].surowy_tekst, "Pierwszy wers");
+        assert_eq!(w[1].surowy_tekst, "Drugi wers");
+    }
+
+    #[test]
+    fn test_analizuj_strumien_z_podpisem() {
+        let input = "Wers pierwszy\nWers drugi\n\n-- Autor";
+        let cursor = Cursor::new(input.as_bytes());
+        let result = analizuj_strumien(cursor, false);
+        assert!(result.is_ok());
     }
 }
