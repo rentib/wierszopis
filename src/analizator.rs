@@ -29,6 +29,16 @@ pub struct AnalizaWiersza {
     pub wersy: Vec<ZapisWersu>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RodzajSonetu {
+    Szekspirowski,
+    Spenserowski,
+    Barnifieldowski,
+    WłoskiPetrarkowski,
+    FrancuskiMarotyczny,
+    InnySonet,
+}
+
 impl AnalizaWiersza {
     pub fn nowy(wersy_bazowe: Vec<Wers>) -> Self {
         let mut zapisane = Vec::new();
@@ -43,6 +53,135 @@ impl AnalizaWiersza {
             });
         }
         AnalizaWiersza { wersy: zapisane }
+    }
+
+    pub fn schemat_rymów(&self) -> (String, Vec<usize>) {
+        let mut schemat = String::new();
+        let mut mapowanie_kolorów: std::collections::HashMap<usize, char> = std::collections::HashMap::new();
+        let mut następna_litera = b'a';
+        let mut numery_grup = Vec::new();
+
+        for z in &self.wersy {
+            if z.wers.oryginalne.is_empty() {
+                continue;
+            }
+            numery_grup.push(z.kolor);
+            if z.kolor == 0 {
+                schemat.push('-');
+            } else {
+                let litera = *mapowanie_kolorów.entry(z.kolor).or_insert_with(|| {
+                    let l = następna_litera as char;
+                    if następna_litera < b'z' {
+                        następna_litera += 1;
+                    }
+                    l
+                });
+                schemat.push(litera);
+            }
+        }
+        (schemat, numery_grup)
+    }
+
+    pub fn analizuj_sonet(&self) -> Option<RodzajSonetu> {
+        let (_schemat, grupy) = self.schemat_rymów();
+        if grupy.len() != 14 {
+            return None;
+        }
+
+        if grupy.iter().any(|&g| g == 0) {
+            return None;
+        }
+
+        let mut normalized = [0usize; 14];
+        let mut seen = std::collections::HashMap::new();
+        let mut next_id = 0;
+        for (i, &g) in grupy.iter().enumerate() {
+            let id = *seen.entry(g).or_insert_with(|| {
+                let n = next_id;
+                next_id += 1;
+                n
+            });
+            normalized[i] = id;
+        }
+
+        // 1. Szekspirowski: abab cdcd efef gg
+        if normalized[0] != normalized[1]
+            && normalized[2] == normalized[0] && normalized[3] == normalized[1]
+            && normalized[4] != normalized[5]
+            && normalized[6] == normalized[4] && normalized[7] == normalized[5]
+            && normalized[4] != normalized[0] && normalized[4] != normalized[1]
+            && normalized[5] != normalized[0] && normalized[5] != normalized[1]
+            && normalized[8] != normalized[9]
+            && normalized[10] == normalized[8] && normalized[11] == normalized[9]
+            && normalized[8] != normalized[0] && normalized[8] != normalized[1]
+            && normalized[8] != normalized[4] && normalized[8] != normalized[5]
+            && normalized[9] != normalized[0] && normalized[9] != normalized[1]
+            && normalized[9] != normalized[4] && normalized[9] != normalized[5]
+            && normalized[12] == normalized[13]
+            && normalized[12] != normalized[0] && normalized[12] != normalized[1]
+            && normalized[12] != normalized[4] && normalized[12] != normalized[5]
+            && normalized[12] != normalized[8] && normalized[12] != normalized[9]
+        {
+            return Some(RodzajSonetu::Szekspirowski);
+        }
+
+        // 2. Spenserowski: abab bcbc cdcd ee
+        if normalized[0] != normalized[1]
+            && normalized[2] == normalized[0] && normalized[3] == normalized[1]
+            && normalized[4] == normalized[1]
+            && normalized[5] != normalized[4]
+            && normalized[6] == normalized[4]
+            && normalized[7] == normalized[5]
+            && normalized[8] == normalized[5]
+            && normalized[9] != normalized[8]
+            && normalized[10] == normalized[8]
+            && normalized[11] == normalized[9]
+            && normalized[12] == normalized[13]
+            && normalized[12] != normalized[0] && normalized[12] != normalized[1]
+            && normalized[12] != normalized[5] && normalized[12] != normalized[9]
+        {
+            return Some(RodzajSonetu::Spenserowski);
+        }
+
+        // 3. Barnifieldowski: abba cddc effe gg
+        if normalized[0] == normalized[3] && normalized[1] == normalized[2] && normalized[0] != normalized[1]
+            && normalized[4] == normalized[7] && normalized[5] == normalized[6] && normalized[4] != normalized[5]
+            && normalized[4] != normalized[0] && normalized[4] != normalized[1]
+            && normalized[5] != normalized[0] && normalized[5] != normalized[1]
+            && normalized[8] == normalized[11] && normalized[9] == normalized[10] && normalized[8] != normalized[9]
+            && normalized[8] != normalized[0] && normalized[8] != normalized[1] && normalized[8] != normalized[4] && normalized[8] != normalized[5]
+            && normalized[9] != normalized[0] && normalized[9] != normalized[1] && normalized[9] != normalized[4] && normalized[9] != normalized[5]
+            && normalized[12] == normalized[13]
+            && normalized[12] != normalized[0] && normalized[12] != normalized[1]
+            && normalized[12] != normalized[4] && normalized[12] != normalized[5]
+            && normalized[12] != normalized[8] && normalized[12] != normalized[9]
+        {
+            return Some(RodzajSonetu::Barnifieldowski);
+        }
+
+        let q1_abba = normalized[0] == normalized[3] && normalized[1] == normalized[2] && normalized[0] != normalized[1];
+        let q1_abab = normalized[0] == normalized[2] && normalized[1] == normalized[3] && normalized[0] != normalized[1];
+        let q2_abba = normalized[4] == normalized[7] && normalized[5] == normalized[6] && normalized[4] != normalized[5];
+        let q2_abab = normalized[4] == normalized[6] && normalized[5] == normalized[7] && normalized[4] != normalized[5];
+
+        let ma_czterowiersze = (q1_abba || q1_abab) && (q2_abba || q2_abab);
+
+        if ma_czterowiersze {
+            let mut ma_kuplet_w_tercetach = false;
+            for i in 8..13 {
+                if normalized[i] == normalized[i + 1] {
+                    ma_kuplet_w_tercetach = true;
+                    break;
+                }
+            }
+            if ma_kuplet_w_tercetach {
+                return Some(RodzajSonetu::FrancuskiMarotyczny);
+            } else {
+                return Some(RodzajSonetu::WłoskiPetrarkowski);
+            }
+        }
+
+        Some(RodzajSonetu::InnySonet)
     }
 
     pub fn analizuj_rymy(&mut self) {
@@ -371,6 +510,22 @@ impl AnalizaWiersza {
             };
             println!("{} {}{}{}", etykieta, rendered_text, padding, akcent_suffix);
         }
+
+        let (schemat, _) = self.schemat_rymów();
+        if !schemat.is_empty() {
+            println!("\nSchemat rymów: {}", schemat);
+            if let Some(sonet) = self.analizuj_sonet() {
+                let nazwa = match sonet {
+                    RodzajSonetu::Szekspirowski => "sonet szekspirowski (elżbietański)",
+                    RodzajSonetu::Spenserowski => "sonet spenserowski",
+                    RodzajSonetu::Barnifieldowski => "sonet barnifieldowski",
+                    RodzajSonetu::WłoskiPetrarkowski => "sonet włoski (petrarkowski)",
+                    RodzajSonetu::FrancuskiMarotyczny => "sonet francuski (marotyczny)",
+                    RodzajSonetu::InnySonet => "inny rodzaj sonetu",
+                };
+                println!("Rozpoznano rodzaj wiersza: {}", nazwa);
+            }
+        }
     }
 }
 
@@ -524,5 +679,43 @@ mod tests {
         assert!(analiza.wersy[0].ma_rym);
         assert!(analiza.wersy[1].ma_rym);
         assert_eq!(analiza.wersy[0].kolor, analiza.wersy[1].kolor);
+    }
+
+    #[test]
+    fn test_rozpoznawanie_sonetow() {
+        let make_analiza = |kolory: Vec<usize>| {
+            let wersy = kolory.into_iter().map(|k| {
+                let w = wers::nowy_wers("test");
+                ZapisWersu {
+                    linenr: 1,
+                    kolor: k,
+                    koszt: 0,
+                    max: 0,
+                    wers: w,
+                    ma_rym: true,
+                }
+            }).collect();
+            AnalizaWiersza { wersy }
+        };
+
+        // 1. Szekspirowski: abab cdcd efef gg
+        let a_szekspir = make_analiza(vec![1, 2, 1, 2, 3, 4, 3, 4, 5, 6, 5, 6, 7, 7]);
+        assert_eq!(a_szekspir.analizuj_sonet(), Some(RodzajSonetu::Szekspirowski));
+
+        // 2. Spenserowski: abab bcbc cdcd ee
+        let a_spenser = make_analiza(vec![1, 2, 1, 2, 2, 3, 2, 3, 3, 4, 3, 4, 5, 5]);
+        assert_eq!(a_spenser.analizuj_sonet(), Some(RodzajSonetu::Spenserowski));
+
+        // 3. Barnifieldowski: abba cddc effe gg
+        let a_barnifield = make_analiza(vec![1, 2, 2, 1, 3, 4, 4, 3, 5, 6, 6, 5, 7, 7]);
+        assert_eq!(a_barnifield.analizuj_sonet(), Some(RodzajSonetu::Barnifieldowski));
+
+        // 4. Włoski (Petrarkowski): abba abba cdc dcd
+        let a_włoski = make_analiza(vec![1, 2, 2, 1, 1, 2, 2, 1, 3, 4, 3, 4, 3, 4]);
+        assert_eq!(a_włoski.analizuj_sonet(), Some(RodzajSonetu::WłoskiPetrarkowski));
+
+        // 5. Francuski (Marotyczny): abba abba cc dede
+        let a_francuski = make_analiza(vec![1, 2, 2, 1, 1, 2, 2, 1, 3, 3, 4, 5, 4, 5]);
+        assert_eq!(a_francuski.analizuj_sonet(), Some(RodzajSonetu::FrancuskiMarotyczny));
     }
 }
