@@ -40,15 +40,17 @@ pub enum RodzajSonetu {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RodzajWiersza {
+pub enum GatunekLiteracki {
     Sonet(RodzajSonetu),
     Vilanella,
+    Pantum,
+    Inny,
 }
 
-impl RodzajWiersza {
+impl GatunekLiteracki {
     pub fn nazwa(&self) -> &'static str {
         match self {
-            RodzajWiersza::Sonet(sonet) => match sonet {
+            GatunekLiteracki::Sonet(sonet) => match sonet {
                 RodzajSonetu::Szekspirowski => "sonet szekspirowski (elżbietański)",
                 RodzajSonetu::Spenserowski => "sonet spenserowski",
                 RodzajSonetu::Barnifieldowski => "sonet barnifieldowski",
@@ -56,7 +58,9 @@ impl RodzajWiersza {
                 RodzajSonetu::FrancuskiMarotyczny => "sonet francuski (marotyczny)",
                 RodzajSonetu::InnySonet => "inny rodzaj sonetu",
             },
-            RodzajWiersza::Vilanella => "vilanella",
+            GatunekLiteracki::Vilanella => "vilanella",
+            GatunekLiteracki::Pantum => "pantum",
+            GatunekLiteracki::Inny => "inny gatunek",
         }
     }
 }
@@ -322,14 +326,63 @@ impl AnalizaWiersza {
         Some(())
     }
 
-    pub fn rodzaj_wiersza(&self) -> Option<RodzajWiersza> {
+    pub fn get_stanzas(&self) -> Vec<Vec<&ZapisWersu>> {
+        let mut stanzas = Vec::new();
+        let mut current = Vec::new();
+        for z in &self.wersy {
+            if z.wers.oryginalne.is_empty() {
+                if !current.is_empty() {
+                    stanzas.push(current);
+                    current = Vec::new();
+                }
+            } else {
+                current.push(z);
+            }
+        }
+        if !current.is_empty() {
+            stanzas.push(current);
+        }
+        stanzas
+    }
+
+    pub fn analizuj_pantum(&self) -> Option<()> {
+        let stanzas = self.get_stanzas();
+        if stanzas.len() < 2 {
+            return None;
+        }
+        for i in 0..stanzas.len() - 1 {
+            let s1 = &stanzas[i];
+            let s2 = &stanzas[i + 1];
+            if s1.len() != 4 || s2.len() != 4 {
+                return None;
+            }
+            let line2_s1 = s1[1].wers.oryginalne.trim().to_lowercase();
+            let line1_s2 = s2[0].wers.oryginalne.trim().to_lowercase();
+            let line4_s1 = s1[3].wers.oryginalne.trim().to_lowercase();
+            let line3_s2 = s2[2].wers.oryginalne.trim().to_lowercase();
+
+            if line2_s1 != line1_s2 || line4_s1 != line3_s2 {
+                return None;
+            }
+        }
+        Some(())
+    }
+
+    pub fn gatunek_literacki(&self) -> Option<GatunekLiteracki> {
         if let Some(sonet) = self.analizuj_sonet() {
-            return Some(RodzajWiersza::Sonet(sonet));
+            return Some(GatunekLiteracki::Sonet(sonet));
         }
         if self.analizuj_vilanelle().is_some() {
-            return Some(RodzajWiersza::Vilanella);
+            return Some(GatunekLiteracki::Vilanella);
+        }
+        if self.analizuj_pantum().is_some() {
+            return Some(GatunekLiteracki::Pantum);
         }
         None
+    }
+
+    pub fn rodzaj_wiersza(&self) -> Option<GatunekLiteracki> {
+        self.gatunek_literacki()
     }
 
     pub fn analizuj_rymy(&mut self) {
@@ -545,7 +598,7 @@ impl AnalizaWiersza {
     #[cfg(feature = "tui")]
     pub fn renderuj(&self, szczegoly: bool) {
         if let Some(rodzaj) = self.rodzaj_wiersza() {
-            println!("Rozpoznano rodzaj wiersza: {}\n", rodzaj.nazwa());
+            println!("Gatunek literacki: {}\n", rodzaj.nazwa());
         }
 
         let (unikalne_kolory, _) = self.wyznacz_kolory(6);
@@ -893,7 +946,7 @@ mod tests {
         wersy.push(wers::nowy_wers(r2));
 
         let analiza = AnalizaWiersza::nowy(wersy);
-        assert_eq!(analiza.rodzaj_wiersza(), Some(RodzajWiersza::Vilanella));
+        assert_eq!(analiza.gatunek_literacki(), Some(GatunekLiteracki::Vilanella));
     }
 
     #[test]
@@ -934,7 +987,24 @@ mod tests {
         wersy.push(wers::nowy_wers(r2));
 
         let analiza = AnalizaWiersza::nowy(wersy);
-        assert_eq!(analiza.rodzaj_wiersza(), Some(RodzajWiersza::Vilanella));
+        assert_eq!(analiza.gatunek_literacki(), Some(GatunekLiteracki::Vilanella));
+    }
+
+    #[test]
+    fn test_rozpoznawanie_nowych_gatunkow() {
+        // Pantum: 2 stanzas of 4 lines with repeated refrains
+        let mut wersy_pantum = Vec::new();
+        wersy_pantum.push(wers::nowy_wers("A"));
+        wersy_pantum.push(wers::nowy_wers("B"));
+        wersy_pantum.push(wers::nowy_wers("C"));
+        wersy_pantum.push(wers::nowy_wers("D"));
+        wersy_pantum.push(wers::nowy_wers(""));
+        wersy_pantum.push(wers::nowy_wers("B"));
+        wersy_pantum.push(wers::nowy_wers("X"));
+        wersy_pantum.push(wers::nowy_wers("D"));
+        wersy_pantum.push(wers::nowy_wers("Y"));
+        let analiza_pantum = AnalizaWiersza::nowy(wersy_pantum);
+        assert_eq!(analiza_pantum.gatunek_literacki(), Some(GatunekLiteracki::Pantum));
     }
 
     #[test]
