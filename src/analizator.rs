@@ -29,43 +29,7 @@ pub struct AnalizaWiersza {
     pub wersy: Vec<ZapisWersu>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RodzajSonetu {
-    Szekspirowski,
-    Spenserowski,
-    Barnifieldowski,
-    WłoskiPetrarkowski,
-    FrancuskiMarotyczny,
-    InnySonet,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GatunekLiteracki {
-    Sonet(RodzajSonetu),
-    Vilanella,
-    Pantum,
-    Triolet,
-    Inny,
-}
-
-impl GatunekLiteracki {
-    pub fn nazwa(&self) -> &'static str {
-        match self {
-            GatunekLiteracki::Sonet(sonet) => match sonet {
-                RodzajSonetu::Szekspirowski => "sonet szekspirowski (elżbietański)",
-                RodzajSonetu::Spenserowski => "sonet spenserowski",
-                RodzajSonetu::Barnifieldowski => "sonet barnifieldowski",
-                RodzajSonetu::WłoskiPetrarkowski => "sonet włoski (petrarkowski)",
-                RodzajSonetu::FrancuskiMarotyczny => "sonet francuski (marotyczny)",
-                RodzajSonetu::InnySonet => "inny rodzaj sonetu",
-            },
-            GatunekLiteracki::Vilanella => "vilanella",
-            GatunekLiteracki::Pantum => "pantum",
-            GatunekLiteracki::Triolet => "triolet",
-            GatunekLiteracki::Inny => "inny gatunek",
-        }
-    }
-}
+pub use crate::gatunki::{GatunekLiteracki, RodzajSonetu, RodzajRondeau};
 
 pub fn usun_podpis(wersy: &mut Vec<Wers>) {
     while let Some(w) = wersy.last() {
@@ -161,314 +125,39 @@ impl AnalizaWiersza {
     }
 
     pub fn schemat_rymów(&self) -> (String, Vec<usize>) {
-        let mut schemat = String::new();
-        let mut mapowanie_kolorów: std::collections::HashMap<usize, char> = std::collections::HashMap::new();
-        let mut następna_litera = b'a';
-        let mut numery_grup = Vec::new();
-
-        for z in &self.wersy {
-            if z.wers.oryginalne.is_empty() {
-                continue;
-            }
-            numery_grup.push(z.kolor);
-            if z.kolor == 0 {
-                schemat.push('-');
-            } else {
-                let litera = *mapowanie_kolorów.entry(z.kolor).or_insert_with(|| {
-                    let l = następna_litera as char;
-                    if następna_litera < b'z' {
-                        następna_litera += 1;
-                    }
-                    l
-                });
-                schemat.push(litera);
-            }
-        }
-        (schemat, numery_grup)
-    }
-
-    pub fn analizuj_sonet(&self) -> Option<RodzajSonetu> {
-        let (_schemat, grupy) = self.schemat_rymów();
-        if grupy.len() != 14 {
-            return None;
-        }
-
-        if grupy.iter().any(|&g| g == 0) {
-            return None;
-        }
-
-        let mut normalized = [0usize; 14];
-        let mut seen = std::collections::HashMap::new();
-        let mut next_id = 0;
-        for (i, &g) in grupy.iter().enumerate() {
-            let id = *seen.entry(g).or_insert_with(|| {
-                let n = next_id;
-                next_id += 1;
-                n
-            });
-            normalized[i] = id;
-        }
-
-        // 1. Szekspirowski: abab cdcd efef gg
-        if normalized[0] != normalized[1]
-            && normalized[2] == normalized[0] && normalized[3] == normalized[1]
-            && normalized[4] != normalized[5]
-            && normalized[6] == normalized[4] && normalized[7] == normalized[5]
-            && normalized[4] != normalized[0] && normalized[4] != normalized[1]
-            && normalized[5] != normalized[0] && normalized[5] != normalized[1]
-            && normalized[8] != normalized[9]
-            && normalized[10] == normalized[8] && normalized[11] == normalized[9]
-            && normalized[8] != normalized[0] && normalized[8] != normalized[1]
-            && normalized[8] != normalized[4] && normalized[8] != normalized[5]
-            && normalized[9] != normalized[0] && normalized[9] != normalized[1]
-            && normalized[9] != normalized[4] && normalized[9] != normalized[5]
-            && normalized[12] == normalized[13]
-            && normalized[12] != normalized[0] && normalized[12] != normalized[1]
-            && normalized[12] != normalized[4] && normalized[12] != normalized[5]
-            && normalized[12] != normalized[8] && normalized[12] != normalized[9]
-        {
-            return Some(RodzajSonetu::Szekspirowski);
-        }
-
-        // 2. Spenserowski: abab bcbc cdcd ee
-        if normalized[0] != normalized[1]
-            && normalized[2] == normalized[0] && normalized[3] == normalized[1]
-            && normalized[4] == normalized[1]
-            && normalized[5] != normalized[4]
-            && normalized[6] == normalized[4]
-            && normalized[7] == normalized[5]
-            && normalized[8] == normalized[5]
-            && normalized[9] != normalized[8]
-            && normalized[10] == normalized[8]
-            && normalized[11] == normalized[9]
-            && normalized[12] == normalized[13]
-            && normalized[12] != normalized[0] && normalized[12] != normalized[1]
-            && normalized[12] != normalized[5] && normalized[12] != normalized[9]
-        {
-            return Some(RodzajSonetu::Spenserowski);
-        }
-
-        // 3. Barnifieldowski: abba cddc effe gg
-        if normalized[0] == normalized[3] && normalized[1] == normalized[2] && normalized[0] != normalized[1]
-            && normalized[4] == normalized[7] && normalized[5] == normalized[6] && normalized[4] != normalized[5]
-            && normalized[4] != normalized[0] && normalized[4] != normalized[1]
-            && normalized[5] != normalized[0] && normalized[5] != normalized[1]
-            && normalized[8] == normalized[11] && normalized[9] == normalized[10] && normalized[8] != normalized[9]
-            && normalized[8] != normalized[0] && normalized[8] != normalized[1] && normalized[8] != normalized[4] && normalized[8] != normalized[5]
-            && normalized[9] != normalized[0] && normalized[9] != normalized[1] && normalized[9] != normalized[4] && normalized[9] != normalized[5]
-            && normalized[12] == normalized[13]
-            && normalized[12] != normalized[0] && normalized[12] != normalized[1]
-            && normalized[12] != normalized[4] && normalized[12] != normalized[5]
-            && normalized[12] != normalized[8] && normalized[12] != normalized[9]
-        {
-            return Some(RodzajSonetu::Barnifieldowski);
-        }
-
-        let q1_abba = normalized[0] == normalized[3] && normalized[1] == normalized[2] && normalized[0] != normalized[1];
-        let q1_abab = normalized[0] == normalized[2] && normalized[1] == normalized[3] && normalized[0] != normalized[1];
-        let q2_abba = normalized[4] == normalized[7] && normalized[5] == normalized[6] && normalized[4] != normalized[5];
-        let q2_abab = normalized[4] == normalized[6] && normalized[5] == normalized[7] && normalized[4] != normalized[5];
-
-        let ma_czterowiersze = (q1_abba || q1_abab) && (q2_abba || q2_abab);
-
-        if ma_czterowiersze {
-            let mut ma_kuplet_w_tercetach = false;
-            for i in 8..13 {
-                if normalized[i] == normalized[i + 1] {
-                    ma_kuplet_w_tercetach = true;
-                    break;
-                }
-            }
-            if ma_kuplet_w_tercetach {
-                return Some(RodzajSonetu::FrancuskiMarotyczny);
-            } else {
-                return Some(RodzajSonetu::WłoskiPetrarkowski);
-            }
-        }
-
-        Some(RodzajSonetu::InnySonet)
-    }
-
-    pub fn analizuj_vilanelle(&self) -> Option<()> {
-        let non_empty: Vec<&ZapisWersu> = self.wersy.iter()
-            .filter(|z| !z.wers.oryginalne.is_empty())
-            .collect();
-
-        if non_empty.len() != 19 {
-            return None;
-        }
-
-        let mut stanzas = Vec::new();
-        let mut current_stanza_len = 0;
-        let mut has_verses_in_stanza = false;
-
-        for z in &self.wersy {
-            if z.wers.oryginalne.is_empty() {
-                if has_verses_in_stanza {
-                    stanzas.push(current_stanza_len);
-                    current_stanza_len = 0;
-                    has_verses_in_stanza = false;
-                }
-            } else {
-                current_stanza_len += 1;
-                has_verses_in_stanza = true;
-            }
-        }
-        if has_verses_in_stanza {
-            stanzas.push(current_stanza_len);
-        }
-
-        if stanzas != vec![3, 3, 3, 3, 3, 4] {
-            return None;
-        }
-
-        let check_refrain = |indices: &[usize]| -> Option<(usize, String, String)> {
-            if indices.is_empty() {
-                return None;
-            }
-            let first_w = &non_empty[indices[0]].wers;
-            let syl = first_w.liczba_sylab;
-            let średniówka = first_w.średniówka.clone();
-            let last_word = first_w.słowa.last()?.oryginalne.to_lowercase();
-
-            for &idx in &indices[1..] {
-                let w = &non_empty[idx].wers;
-                if !is_lekka_modyfikacja_wersu(first_w, w) {
-                    return None;
-                }
-                if w.średniówka != średniówka {
-                    return None;
-                }
-            }
-            Some((syl, średniówka, last_word))
-        };
-
-        let a1_indices = [0, 5, 11, 17];
-        let a2_indices = [2, 8, 14, 18];
-
-        let a1_props = check_refrain(&a1_indices)?;
-        let a2_props = check_refrain(&a2_indices)?;
-
-        if a1_props.2 == a2_props.2 {
-            return None;
-        }
-
-        Some(())
+        crate::gatunki::schemat_rymów(&self.wersy)
     }
 
     pub fn get_stanzas(&self) -> Vec<Vec<&ZapisWersu>> {
-        let mut stanzas = Vec::new();
-        let mut current = Vec::new();
-        for z in &self.wersy {
-            if z.wers.oryginalne.is_empty() {
-                if !current.is_empty() {
-                    stanzas.push(current);
-                    current = Vec::new();
-                }
-            } else {
-                current.push(z);
-            }
-        }
-        if !current.is_empty() {
-            stanzas.push(current);
-        }
-        stanzas
+        crate::gatunki::get_stanzas(&self.wersy)
+    }
+
+    pub fn analizuj_sonet(&self) -> Option<RodzajSonetu> {
+        crate::gatunki::analizuj_sonet(&self.wersy)
+    }
+
+    pub fn analizuj_vilanelle(&self) -> Option<()> {
+        crate::gatunki::analizuj_vilanelle(&self.wersy)
     }
 
     pub fn analizuj_pantum(&self) -> Option<()> {
-        let stanzas = self.get_stanzas();
-        if stanzas.len() < 2 {
-            return None;
-        }
-        for i in 0..stanzas.len() - 1 {
-            let s1 = &stanzas[i];
-            let s2 = &stanzas[i + 1];
-            if s1.len() != 4 || s2.len() != 4 {
-                return None;
-            }
-            let line2_s1 = s1[1].wers.oryginalne.trim().to_lowercase();
-            let line1_s2 = s2[0].wers.oryginalne.trim().to_lowercase();
-            let line4_s1 = s1[3].wers.oryginalne.trim().to_lowercase();
-            let line3_s2 = s2[2].wers.oryginalne.trim().to_lowercase();
-
-            if line2_s1 != line1_s2 || line4_s1 != line3_s2 {
-                return None;
-            }
-        }
-        Some(())
+        crate::gatunki::analizuj_pantum(&self.wersy)
     }
 
     pub fn analizuj_triolet(&self) -> Option<()> {
-        let non_empty: Vec<&ZapisWersu> = self.wersy.iter()
-            .filter(|z| !z.wers.oryginalne.is_empty())
-            .collect();
+        crate::gatunki::analizuj_triolet(&self.wersy)
+    }
 
-        if non_empty.len() != 8 {
-            return None;
-        }
+    pub fn analizuj_rondeau(&self) -> Option<RodzajRondeau> {
+        crate::gatunki::analizuj_rondeau(&self.wersy)
+    }
 
-        let stanzas = self.get_stanzas();
-        let has_stanza_8 = stanzas.iter().any(|s| s.len() == 8);
-        if !has_stanza_8 && stanzas.len() != 1 {
-            return None;
-        }
-
-        let w1 = &non_empty[0].wers;
-        let w2 = &non_empty[1].wers;
-        let w3 = &non_empty[2].wers;
-        let w4 = &non_empty[3].wers;
-        let w5 = &non_empty[4].wers;
-        let w6 = &non_empty[5].wers;
-        let w7 = &non_empty[6].wers;
-        let w8 = &non_empty[7].wers;
-
-        // Rym A: w1, w3, w5
-        let (r13, _, _) = wers::czy_rymują(w1, w3);
-        let (r15, _, _) = wers::czy_rymują(w1, w5);
-        if !r13 || !r15 {
-            return None;
-        }
-
-        // Rym B: w2, w6
-        let (r26, _, _) = wers::czy_rymują(w2, w6);
-        if !r26 {
-            return None;
-        }
-
-        // A and B must not rhyme together
-        let (r12, _, _) = wers::czy_rymują(w1, w2);
-        if r12 {
-            return None;
-        }
-
-        // Refrains: w4 and w7 are slight modifications of w1; w8 is slight modification of w2
-        if !is_lekka_modyfikacja_wersu(w1, w4) {
-            return None;
-        }
-        if !is_lekka_modyfikacja_wersu(w1, w7) {
-            return None;
-        }
-        if !is_lekka_modyfikacja_wersu(w2, w8) {
-            return None;
-        }
-
-        Some(())
+    pub fn analizuj_limeryk(&self) -> Option<()> {
+        crate::gatunki::analizuj_limeryk(&self.wersy)
     }
 
     pub fn gatunek_literacki(&self) -> Option<GatunekLiteracki> {
-        if let Some(sonet) = self.analizuj_sonet() {
-            return Some(GatunekLiteracki::Sonet(sonet));
-        }
-        if self.analizuj_vilanelle().is_some() {
-            return Some(GatunekLiteracki::Vilanella);
-        }
-        if self.analizuj_pantum().is_some() {
-            return Some(GatunekLiteracki::Pantum);
-        }
-        if self.analizuj_triolet().is_some() {
-            return Some(GatunekLiteracki::Triolet);
-        }
-        None
+        crate::gatunki::gatunek_literacki(&self.wersy)
     }
 
     pub fn rodzaj_wiersza(&self) -> Option<GatunekLiteracki> {
