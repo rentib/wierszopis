@@ -44,6 +44,7 @@ pub enum GatunekLiteracki {
     Sonet(RodzajSonetu),
     Vilanella,
     Pantum,
+    Triolet,
     Inny,
 }
 
@@ -60,6 +61,7 @@ impl GatunekLiteracki {
             },
             GatunekLiteracki::Vilanella => "vilanella",
             GatunekLiteracki::Pantum => "pantum",
+            GatunekLiteracki::Triolet => "triolet",
             GatunekLiteracki::Inny => "inny gatunek",
         }
     }
@@ -107,6 +109,38 @@ pub fn usun_podpis(wersy: &mut Vec<Wers>) {
             }
         }
     }
+}
+
+pub fn is_lekka_modyfikacja_wersu(w1: &Wers, w2: &Wers) -> bool {
+    if w1.liczba_sylab != w2.liczba_sylab {
+        return false;
+    }
+    if w1.akcent_wersu != w2.akcent_wersu {
+        return false;
+    }
+    let w1_last = w1.słowa.last().map(|s| s.oryginalne.to_lowercase());
+    let w2_last = w2.słowa.last().map(|s| s.oryginalne.to_lowercase());
+    if w1_last != w2_last {
+        return false;
+    }
+
+    let words1: Vec<String> = w1.słowa.iter().map(|s| s.oryginalne.to_lowercase()).collect();
+    let words2: Vec<String> = w2.słowa.iter().map(|s| s.oryginalne.to_lowercase()).collect();
+    let n = words1.len();
+    if n == 0 {
+        return w1.oryginalne.trim().to_lowercase() == w2.oryginalne.trim().to_lowercase();
+    }
+
+    let max_len = std::cmp::max(words1.len(), words2.len());
+    let min_len = std::cmp::min(words1.len(), words2.len());
+    let mut diff_count = max_len - min_len;
+    for i in 0..min_len {
+        if words1[i] != words2[i] {
+            diff_count += 1;
+        }
+    }
+    let allowed_diff = ((n as f64) / 5.0).ceil() as usize;
+    diff_count <= allowed_diff
 }
 
 impl AnalizaWiersza {
@@ -299,14 +333,10 @@ impl AnalizaWiersza {
 
             for &idx in &indices[1..] {
                 let w = &non_empty[idx].wers;
-                if w.liczba_sylab != syl {
+                if !is_lekka_modyfikacja_wersu(first_w, w) {
                     return None;
                 }
                 if w.średniówka != średniówka {
-                    return None;
-                }
-                let w_last = w.słowa.last().map(|s| s.oryginalne.to_lowercase())?;
-                if w_last != last_word {
                     return None;
                 }
             }
@@ -368,6 +398,63 @@ impl AnalizaWiersza {
         Some(())
     }
 
+    pub fn analizuj_triolet(&self) -> Option<()> {
+        let non_empty: Vec<&ZapisWersu> = self.wersy.iter()
+            .filter(|z| !z.wers.oryginalne.is_empty())
+            .collect();
+
+        if non_empty.len() != 8 {
+            return None;
+        }
+
+        let stanzas = self.get_stanzas();
+        let has_stanza_8 = stanzas.iter().any(|s| s.len() == 8);
+        if !has_stanza_8 && stanzas.len() != 1 {
+            return None;
+        }
+
+        let w1 = &non_empty[0].wers;
+        let w2 = &non_empty[1].wers;
+        let w3 = &non_empty[2].wers;
+        let w4 = &non_empty[3].wers;
+        let w5 = &non_empty[4].wers;
+        let w6 = &non_empty[5].wers;
+        let w7 = &non_empty[6].wers;
+        let w8 = &non_empty[7].wers;
+
+        // Rym A: w1, w3, w5
+        let (r13, _, _) = wers::czy_rymują(w1, w3);
+        let (r15, _, _) = wers::czy_rymują(w1, w5);
+        if !r13 || !r15 {
+            return None;
+        }
+
+        // Rym B: w2, w6
+        let (r26, _, _) = wers::czy_rymują(w2, w6);
+        if !r26 {
+            return None;
+        }
+
+        // A and B must not rhyme together
+        let (r12, _, _) = wers::czy_rymują(w1, w2);
+        if r12 {
+            return None;
+        }
+
+        // Refrains: w4 and w7 are slight modifications of w1; w8 is slight modification of w2
+        if !is_lekka_modyfikacja_wersu(w1, w4) {
+            return None;
+        }
+        if !is_lekka_modyfikacja_wersu(w1, w7) {
+            return None;
+        }
+        if !is_lekka_modyfikacja_wersu(w2, w8) {
+            return None;
+        }
+
+        Some(())
+    }
+
     pub fn gatunek_literacki(&self) -> Option<GatunekLiteracki> {
         if let Some(sonet) = self.analizuj_sonet() {
             return Some(GatunekLiteracki::Sonet(sonet));
@@ -377,6 +464,9 @@ impl AnalizaWiersza {
         }
         if self.analizuj_pantum().is_some() {
             return Some(GatunekLiteracki::Pantum);
+        }
+        if self.analizuj_triolet().is_some() {
+            return Some(GatunekLiteracki::Triolet);
         }
         None
     }
@@ -1005,6 +1095,38 @@ mod tests {
         wersy_pantum.push(wers::nowy_wers("Y"));
         let analiza_pantum = AnalizaWiersza::nowy(wersy_pantum);
         assert_eq!(analiza_pantum.gatunek_literacki(), Some(GatunekLiteracki::Pantum));
+    }
+
+    #[test]
+    fn test_rozpoznawanie_trioletu() {
+        let wersy = vec![
+            wers::nowy_wers("To jest piękny dom"),
+            wers::nowy_wers("Szumi wielki las"),
+            wers::nowy_wers("Gdzie rośnie stary grom"),
+            wers::nowy_wers("To jest piękny dom"),
+            wers::nowy_wers("I leży zimny złom"),
+            wers::nowy_wers("Mijają szybko czas"),
+            wers::nowy_wers("To jest piękny dom"),
+            wers::nowy_wers("Szumi wielki las"),
+        ];
+        let analiza = AnalizaWiersza::nowy(wersy);
+        assert_eq!(analiza.gatunek_literacki(), Some(GatunekLiteracki::Triolet));
+    }
+
+    #[test]
+    fn test_rozpoznawanie_trioletu_z_modyfikacja() {
+        let wersy = vec![
+            wers::nowy_wers("To jest piękny dom"),
+            wers::nowy_wers("Szumi wielki las"),
+            wers::nowy_wers("Gdzie rośnie stary grom"),
+            wers::nowy_wers("To jest cudny dom"), // lekka modyfikacja refrenu 1
+            wers::nowy_wers("I leży zimny złom"),
+            wers::nowy_wers("Mijają szybko czas"),
+            wers::nowy_wers("To jest piękny dom"),
+            wers::nowy_wers("Szumi cichy las"), // lekka modyfikacja refrenu 2
+        ];
+        let analiza = AnalizaWiersza::nowy(wersy);
+        assert_eq!(analiza.gatunek_literacki(), Some(GatunekLiteracki::Triolet));
     }
 
     #[test]
