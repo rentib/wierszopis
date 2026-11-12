@@ -176,9 +176,13 @@ impl AnalizaWiersza {
                 continue;
             }
 
-            let mut best_j = None;
-            let mut min_koszt = i32::MAX;
-            let mut best_max = 0;
+            let mut best_j_w = None;
+            let mut min_koszt_w = i32::MAX;
+            let mut best_max_w = 0;
+
+            let mut best_j_spoza = None;
+            let mut min_koszt_spoza = i32::MAX;
+            let mut best_max_spoza = 0;
 
             for j in 0..i {
                 if self.wersy[j].wers.oryginalne.is_empty() {
@@ -190,12 +194,48 @@ impl AnalizaWiersza {
                 }
 
                 let (ok, koszt, max_k) = wers::czy_rymują(b_wers, a_wers);
-                if ok && koszt < min_koszt {
-                    min_koszt = koszt;
-                    best_max = max_k;
-                    best_j = Some(j);
+                if !ok {
+                    continue;
+                }
+
+                // Check if j is in the same stanza as i
+                let mut same_stanza = true;
+                for k in (j + 1)..i {
+                    if self.wersy[k].wers.oryginalne.is_empty() {
+                        same_stanza = false;
+                        break;
+                    }
+                }
+
+                if same_stanza {
+                    if koszt < min_koszt_w {
+                        min_koszt_w = koszt;
+                        best_max_w = max_k;
+                        best_j_w = Some(j);
+                    }
+                } else {
+                    if koszt < min_koszt_spoza {
+                        min_koszt_spoza = koszt;
+                        best_max_spoza = max_k;
+                        best_j_spoza = Some(j);
+                    }
                 }
             }
+
+            let (best_j, min_koszt, best_max) = match (best_j_w, best_j_spoza) {
+                (Some(jw), Some(js)) => {
+                    // jedyna sytuacja, gdzie rym spoza strofy powinien być wybierany zamiast rymu ze strofy 
+                    // jest taka, że ten spoza jest dokładny (koszt == 0), a ten w jest niedokładny (koszt > 0)
+                    if min_koszt_spoza == 0 && min_koszt_w > 0 {
+                        (Some(js), min_koszt_spoza, best_max_spoza)
+                    } else {
+                        (Some(jw), min_koszt_w, best_max_w)
+                    }
+                }
+                (Some(jw), None) => (Some(jw), min_koszt_w, best_max_w),
+                (None, Some(js)) => (Some(js), min_koszt_spoza, best_max_spoza),
+                (None, None) => (None, i32::MAX, 0),
+            };
 
             if let Some(j) = best_j {
                 let mut root_i = i;
@@ -635,6 +675,19 @@ mod tests {
         let cursor = Cursor::new(input.as_bytes());
         let result = analizuj_strumien(cursor, false);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_rym_priorytet_strofy() {
+        let w0 = wers::nowy_wers("dom");
+        let w_pusty = wers::nowy_wers("");
+        let w1 = wers::nowy_wers("grom");
+        let w2 = wers::nowy_wers("tom");
+        let mut analiza = AnalizaWiersza::nowy(vec![w0, w_pusty, w1, w2]);
+        analiza.analizuj_rymy();
+        assert!(analiza.wersy[2].ma_rym);
+        assert!(analiza.wersy[3].ma_rym);
+        assert_eq!(analiza.wersy[2].kolor, analiza.wersy[3].kolor);
     }
 
     #[test]
