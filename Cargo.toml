@@ -8,11 +8,20 @@ clap = { version = "4.4", features = ["derive"], optional = true }
 ratatui = { version = "0.26", optional = true }
 crossterm = { version = "0.27", optional = true }
 unicode-width = "0.1"
+tower-lsp = { version = "0.20", optional = true }
+tokio = { version = "1.30", features = ["full"], optional = true }
+serde_json = { version = "1.0", optional = true }
 
 [features]
 default = ["cli", "tui"]
 cli = ["dep:clap"]
 tui = ["dep:ratatui", "dep:crossterm"]
+lsp = ["dep:tower-lsp", "dep:tokio", "dep:serde_json"]
+
+[[bin]]
+name = "wierszopis-lsp"
+path = "src/bin/wierszopis-lsp/main.rs"
+required-features = ["lsp"]
 
 [workspace]
 members = [".", "gui"]
