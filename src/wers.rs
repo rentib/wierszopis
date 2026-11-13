@@ -118,7 +118,7 @@ pub fn kandydaci_średniówki(słowa: &[Słowo], liczba_sylab: usize) -> Vec<(St
         let x = syl_counts[k];
         let y = liczba_sylab - x;
 
-        if x < 3 || y < 3 {
+        if x < 2 || y < 2 {
             continue;
         }
 
@@ -127,21 +127,32 @@ pub fn kandydaci_średniówki(słowa: &[Słowo], liczba_sylab: usize) -> Vec<(St
         let mut score = 100 - (asymmetry * 5);
 
         match (liczba_sylab, x, y) {
-            (13, 7, 6) | (13, 6, 7) => score += 30,
-            (13, 8, 5) | (13, 5, 8) => score += 15,
-            (11, 5, 6) | (11, 6, 5) => score += 30,
-            (11, 4, 7) | (11, 7, 4) => score += 15,
-            (10, 5, 5) => score += 30,
-            (9, 5, 4) | (9, 4, 5) => score += 30,
+            (13, 7, 6) => score += 30,
+            (13, 6, 7) => score += 24,
+            (13, 8, 5) => score += 15,
+            (13, 5, 8) => score += 10,
+            (11, 5, 6) => score += 30,
+            (11, 6, 5) => score += 24,
+            (11, 4, 7) => score += 15,
+            (11, 7, 4) => score += 10,
+            (10, 5, 5) => score += 15,
+            (10, 4, 6) | (10, 6, 4) => score += 20,
+            (9, 5, 4) => score += 30,
+            (9, 4, 5) => score += 24,
             _ => {}
         }
 
         if x > 0 && x <= akcent.len() {
             let char_at_x = akcent.chars().nth(x - 1).unwrap_or('s');
             if char_at_x == 'S' {
-                score -= 20;
-            } else {
-                score += 10;
+                score -= 15;
+            }
+        }
+
+        if x >= 2 && x <= akcent.len() {
+            let penultimate_char = akcent.chars().nth(x - 2).unwrap_or('s');
+            if penultimate_char == 'S' {
+                score += 15;
             }
         }
 
@@ -411,6 +422,16 @@ mod tests {
         assert_eq!(w11.liczba_sylab, 11);
         // Sprawdzamy czy wybiera zrównoważony podział (np. 5+6 lub 6+5)
         assert!(w11.średniówka == "5+6" || w11.średniówka == "6+5");
+    }
+
+    #[test]
+    fn test_nowe_zasady_średniówki() {
+        // Test asymetrii 7+6 vs 6+7 i minimalnej liczby sylab w półwersie
+        let cands = kandydaci_średniówki(&nowy_wers("Litwo! Ojczyzno moja! ty jesteś jak zdrowie").słowa, 13);
+        // Znajdź 7+6 i 6+7 i sprawdź, czy 7+6 ma wyższy wynik
+        let score_7_6 = cands.iter().find(|(l, _)| l == "7+6").map(|&(_, s)| s).unwrap_or(0);
+        let score_6_7 = cands.iter().find(|(l, _)| l == "6+7").map(|&(_, s)| s).unwrap_or(0);
+        assert!(score_7_6 > score_6_7);
     }
 }
 

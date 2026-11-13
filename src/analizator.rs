@@ -318,18 +318,22 @@ impl AnalizaWiersza {
                         if n_offset == 0 { continue; }
                         let n_idx = idx as i32 + n_offset;
                         if n_idx >= 0 && (n_idx as usize) < current_best.len() {
-                            let neighbor_label = &current_best[n_idx as usize];
-                            if neighbor_label != "-" {
-                                let distance = n_offset.abs();
-                                let weight = match distance {
-                                    1 => 25,
-                                    2 => 15,
-                                    _ => 10,
-                                };
-                                if label == neighbor_label {
-                                    total_score += weight;
-                                } else {
-                                    total_score -= weight / 2;
+                            let n_real_idx = non_empty_indices[n_idx as usize];
+                            let current_real_idx = non_empty_indices[idx];
+                            if self.wersy[n_real_idx].wers.liczba_sylab == self.wersy[current_real_idx].wers.liczba_sylab {
+                                let neighbor_label = &current_best[n_idx as usize];
+                                if neighbor_label != "-" {
+                                    let distance = n_offset.abs();
+                                    let weight = match distance {
+                                        1 => 3,
+                                        2 => 2,
+                                        _ => 1,
+                                    };
+                                    if label == neighbor_label {
+                                        total_score += weight;
+                                    } else {
+                                        total_score -= weight / 2;
+                                    }
                                 }
                             }
                         }
