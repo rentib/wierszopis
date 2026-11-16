@@ -9,7 +9,7 @@ use wierszopis::{analizator, fonetyka, indeks::IndeksCache, slownik, wers};
 #[derive(Debug, Clone, Default)]
 struct StanzaConfig {
     sylaby_pattern: Option<Vec<usize>>,
-    expected_sredniowka: Option<String>,
+    expected_sredniowka_pattern: Option<Vec<String>>,
     rymy_schemat: Option<String>,
     akcenty_enabled: bool,
 }
@@ -42,57 +42,62 @@ fn parse_directive(line: &str) -> Option<Result<StanzaConfig, String>> {
         if part.is_empty() {
             continue;
         }
-        let kv: Vec<&str> = part.split('=').map(|s| s.trim()).collect();
+        let kv: Vec<&str> = part.splitn(2, '=').map(|s| s.trim()).collect();
         if kv.len() != 2 {
             return Some(Err(format!("Niepoprawna para klucz=wartość: '{}'", part)));
         }
         let key = kv[0].to_lowercase();
-        let val = kv[1].trim();
+        let val = kv[1];
 
         if key == "sylaby" {
             let val_clean = if val.starts_with('[') && val.ends_with(']') {
                 val[1..val.len()-1].trim()
             } else {
-                val
+                val.trim()
             };
 
-            if val_clean.contains('+') {
-                let parts: Vec<&str> = val_clean.split('+').collect();
-                if parts.len() == 2 {
-                    match (parts[0].trim().parse::<usize>(), parts[1].trim().parse::<usize>()) {
-                        (Ok(p1), Ok(p2)) => {
-                            config.sylaby_pattern = Some(vec![p1 + p2]);
-                            config.expected_sredniowka = Some(val_clean.to_string());
+            let mut syl_pattern = vec![];
+            let mut sred_pattern = vec![];
+
+            for item in val_clean.split(',') {
+                let item = item.trim();
+                if item.is_empty() { continue; }
+
+                if item.contains('+') {
+                    let parts: Vec<&str> = item.split('+').collect();
+                    if parts.len() == 2 {
+                        match (parts[0].trim().parse::<usize>(), parts[1].trim().parse::<usize>()) {
+                            (Ok(p1), Ok(p2)) => {
+                                syl_pattern.push(p1 + p2);
+                                sred_pattern.push(item.to_string());
+                            }
+                            _ => return Some(Err(format!("Niepoprawne wartości średniówki: '{}'", item))),
                         }
-                        _ => return Some(Err(format!("Niepoprawne wartości średniówki: '{}'", val_clean))),
+                    } else {
+                        return Some(Err(format!("Niepoprawny format średniówki: '{}'", item)));
                     }
                 } else {
-                    return Some(Err(format!("Niepoprawny format średniówki: '{}'", val_clean)));
-                }
-            } else if val_clean.contains(',') {
-                let mut numbers = vec![];
-                for s in val_clean.split(',') {
-                    match s.trim().parse::<usize>() {
-                        Ok(n) => numbers.push(n),
-                        Err(_) => return Some(Err(format!("Niepoprawna liczba w liście sylab: '{}'", s.trim()))),
+                    match item.parse::<usize>() {
+                        Ok(n) => {
+                            syl_pattern.push(n);
+                            sred_pattern.push("-".to_string());
+                        }
+                        Err(_) => return Some(Err(format!("Niepoprawna liczba sylab: '{}'", item))),
                     }
                 }
-                if !numbers.is_empty() {
-                    config.sylaby_pattern = Some(numbers);
-                } else {
-                    return Some(Err("Pusta lista sylab".to_string()));
-                }
+            }
+
+            if !syl_pattern.is_empty() {
+                config.sylaby_pattern = Some(syl_pattern);
+                config.expected_sredniowka_pattern = Some(sred_pattern);
             } else {
-                match val_clean.parse::<usize>() {
-                    Ok(n) => config.sylaby_pattern = Some(vec![n]),
-                    Err(_) => return Some(Err(format!("Niepoprawna liczba sylab: '{}'", val_clean))),
-                }
+                return Some(Err("Pusta lista sylab".to_string()));
             }
         } else if key == "rymy" {
             let val_clean = if val.starts_with('[') && val.ends_with(']') {
                 val[1..val.len()-1].trim()
             } else {
-                val
+                val.trim()
             };
             let val_lower = val_clean.to_string().to_lowercase();
             if !val_lower.is_empty() {
@@ -101,11 +106,11 @@ fn parse_directive(line: &str) -> Option<Result<StanzaConfig, String>> {
                 return Some(Err("Pusty schemat rymów".to_string()));
             }
         } else if key == "akcenty" {
-            let val_lower = val.to_lowercase();
+            let val_lower = val.trim().to_lowercase();
             match val_lower.as_str() {
-                "true" | "tak" | "1" => config.akcenty_enabled = true,
-                "false" | "nie" | "0" => config.akcenty_enabled = false,
-                _ => return Some(Err(format!("Niepoprawna wartość dla opcji akcenty (oczekiwano true/false): '{}'", val))),
+                "tak" => config.akcenty_enabled = true,
+                "nie" => config.akcenty_enabled = false,
+                _ => return Some(Err(format!("Niepoprawna wartość dla opcji akcenty (oczekiwano tak/nie): '{}'", val))),
             }
         } else {
             return Some(Err(format!("Nieznany parametr dyrektywy: '{}'", key)));
@@ -305,8 +310,9 @@ impl Backend {
             }
 
             // Caesura (średniówka) check
-            if let Some(ref expected_sred) = current_config.expected_sredniowka {
-                if w.średniówka != "-" && w.średniówka != *expected_sred {
+            if let Some(ref expected_sred_pattern) = current_config.expected_sredniowka_pattern {
+                let expected_sred = &expected_sred_pattern[verse_in_block_idx % expected_sred_pattern.len()];
+                if expected_sred != "-" && w.średniówka != *expected_sred {
                     diagnostics.push(Diagnostic {
                         range: Range {
                             start: Position { line: line_idx as u32, character: start as u32 },
@@ -491,6 +497,10 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 color_provider: Some(ColorProviderCapability::Simple(true)),
                 inlay_hint_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec![":".to_string(), " ".to_string(), "=".to_string(), ";".to_string()]),
+                    ..Default::default()
+                }),
                 semantic_tokens_provider: Some(
                     SemanticTokensServerCapabilities::SemanticTokensOptions(
                         SemanticTokensOptions {
@@ -571,6 +581,118 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         let mut docs = self.documents.lock().await;
         docs.remove(&uri);
+    }
+
+    async fn completion(
+        &self,
+        params: CompletionParams,
+    ) -> tower_lsp::jsonrpc::Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+
+        let docs = self.documents.lock().await;
+        let Some(text) = docs.get(&uri) else {
+            return Ok(None);
+        };
+
+        let lines: Vec<&str> = text.lines().collect();
+        if (position.line as usize) >= lines.len() {
+            return Ok(None);
+        }
+
+        let line = lines[position.line as usize];
+        let trimmed = line.trim_start();
+
+        if !(trimmed.starts_with("//") || trimmed.starts_with('#')) {
+            return Ok(None);
+        }
+
+        let content_start_idx = if let Some(idx) = line.find("//") {
+            idx + 2
+        } else if let Some(idx) = line.find('#') {
+            idx + 1
+        } else {
+            return Ok(None);
+        };
+
+        let cursor_char = position.character as usize;
+        if cursor_char < content_start_idx {
+            return Ok(None);
+        }
+
+        let content_until_cursor = &line[content_start_idx..cursor_char];
+        let content_lower = content_until_cursor.trim_start().to_lowercase();
+
+        let mut items = vec![];
+
+        if content_lower.is_empty()
+            || "wierszopis:".starts_with(&content_lower)
+            || "@wierszopis:".starts_with(&content_lower)
+        {
+            items.push(CompletionItem {
+                label: "wierszopis: ".to_string(),
+                kind: Some(CompletionItemKind::KEYWORD),
+                detail: Some("Dyrektywa Wierszopisa".to_string()),
+                ..Default::default()
+            });
+            items.push(CompletionItem {
+                label: "@wierszopis: ".to_string(),
+                kind: Some(CompletionItemKind::KEYWORD),
+                detail: Some("Dyrektywa Wierszopisa (alternatywna)".to_string()),
+                ..Default::default()
+            });
+        }
+
+        if content_until_cursor.to_lowercase().contains("wierszopis:") {
+            let colon_idx = content_until_cursor.to_lowercase().find("wierszopis:").unwrap() + "wierszopis:".len();
+            let after_colon = &content_until_cursor[colon_idx..];
+
+            let parts: Vec<&str> = after_colon.split(';').collect();
+            let last_part = parts.last().unwrap_or(&"").trim_start();
+
+            if !last_part.contains('=') {
+                let keys = ["sylaby=", "rymy=", "akcenty="];
+                for key in keys {
+                    if key.starts_with(&last_part.to_lowercase()) {
+                        items.push(CompletionItem {
+                            label: key.to_string(),
+                            kind: Some(CompletionItemKind::FIELD),
+                            ..Default::default()
+                        });
+                    }
+                }
+            } else {
+                let kv: Vec<&str> = last_part.splitn(2, '=').collect();
+                let key = kv[0].trim().to_lowercase();
+                let val = if kv.len() > 1 { kv[1].trim_start() } else { "" };
+
+                if key == "akcenty" {
+                    let vals = ["tak", "nie"];
+                    for v in vals {
+                        if v.starts_with(&val.to_lowercase()) {
+                            items.push(CompletionItem {
+                                label: v.to_string(),
+                                kind: Some(CompletionItemKind::VALUE),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                } else if key == "rymy" {
+                    let common = ["aabb", "abab", "abba"];
+                    for c in common {
+                        if c.starts_with(&val.to_lowercase()) {
+                            items.push(CompletionItem {
+                                label: c.to_string(),
+                                kind: Some(CompletionItemKind::VALUE),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(Some(CompletionResponse::Array(items)))
     }
 
     async fn hover(&self, params: HoverParams) -> tower_lsp::jsonrpc::Result<Option<Hover>> {
@@ -903,16 +1025,34 @@ mod tests {
         let cfg1 = res1.unwrap().unwrap();
         assert_eq!(cfg1.sylaby_pattern, Some(vec![12, 12, 7, 7, 8]));
 
-        let res2 = parse_directive("# wierszopis: sylaby=[12, 12, 7, 7, 8]; akcenty = true");
+        let res2 = parse_directive("# wierszopis: sylaby=[12, 12, 7, 7, 8]; akcenty = tak");
         assert!(res2.is_some());
         let cfg2 = res2.unwrap().unwrap();
         assert_eq!(cfg2.sylaby_pattern, Some(vec![12, 12, 7, 7, 8]));
         assert!(cfg2.akcenty_enabled);
 
-        let res3 = parse_directive("# wierszopis: akcenty=false");
+        let res3 = parse_directive("# wierszopis: akcenty=nie");
         assert!(res3.is_some());
         let cfg3 = res3.unwrap().unwrap();
         assert!(!cfg3.akcenty_enabled);
+    }
+
+    #[test]
+    fn test_parse_directive_mixed_sylaby() {
+        let res = parse_directive("# wierszopis: sylaby=[6+6,6+6,7,7,8]");
+        assert!(res.is_some());
+        let cfg = res.unwrap().unwrap();
+        assert_eq!(cfg.sylaby_pattern, Some(vec![12, 12, 7, 7, 8]));
+        assert_eq!(
+            cfg.expected_sredniowka_pattern,
+            Some(vec![
+                "6+6".to_string(),
+                "6+6".to_string(),
+                "-".to_string(),
+                "-".to_string(),
+                "-".to_string()
+            ])
+        );
     }
 
     #[test]
