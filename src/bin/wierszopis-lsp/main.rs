@@ -6,11 +6,32 @@ use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 use wierszopis::{analizator::{self, StanzaConfig}, fonetyka, indeks::IndeksCache, slownik};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LintTrigger {
+    OnEdit,
+    OnSave,
+    OnOpen,
+}
+
+#[derive(Debug, Clone)]
+struct ServerConfig {
+    trigger: LintTrigger,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            trigger: LintTrigger::OnSave,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Backend {
     client: Client,
     documents: Arc<Mutex<HashMap<Url, String>>>,
     dictionary: Option<IndeksCache>,
+    config: Arc<Mutex<ServerConfig>>,
 }
 
 impl Backend {
@@ -28,7 +49,22 @@ impl Backend {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> tower_lsp::jsonrpc::Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> tower_lsp::jsonrpc::Result<InitializeResult> {
+        if let Some(opts) = params.initialization_options {
+            if let Some(val) = opts.get("lintTrigger")
+                .or_else(|| opts.get("trigger"))
+                .or_else(|| opts.get("lint_trigger"))
+                .and_then(|v| v.as_str())
+            {
+                let trigger = match val.to_lowercase().as_str() {
+                    "onedit" | "edit" | "change" => LintTrigger::OnEdit,
+                    "onopen" | "open" => LintTrigger::OnOpen,
+                    _ => LintTrigger::OnSave,
+                };
+                let mut cfg = self.config.lock().await;
+                cfg.trigger = trigger;
+            }
+        }
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -75,13 +111,29 @@ impl LanguageServer for Backend {
         self.client
             .log_message(
                 MessageType::INFO,
-                "Wierszopis LSP Server initialized with Polish directives, linting & inlay hints!",
+                "Wierszopis LSP Server initialized with configurable trigger modes (onOpen, onSave, onEdit)!",
             )
             .await;
     }
 
     async fn shutdown(&self) -> tower_lsp::jsonrpc::Result<()> {
         Ok(())
+    }
+
+    async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
+        if let Some(val) = params.settings.get("wierszopis")
+            .or_else(|| params.settings.get("wierszopisLsp"))
+            .and_then(|s| s.get("lintTrigger").or_else(|| s.get("trigger")).or_else(|| s.get("lint_trigger")))
+            .and_then(|v| v.as_str())
+        {
+            let trigger = match val.to_lowercase().as_str() {
+                "onedit" | "edit" | "change" => LintTrigger::OnEdit,
+                "onopen" | "open" => LintTrigger::OnOpen,
+                _ => LintTrigger::OnSave,
+            };
+            let mut cfg = self.config.lock().await;
+            cfg.trigger = trigger;
+        }
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
@@ -91,7 +143,13 @@ impl LanguageServer for Backend {
             let mut docs = self.documents.lock().await;
             docs.insert(uri.clone(), text.clone());
         }
-        self.lint_and_publish_diagnostics(&uri, &text).await;
+        let trigger = {
+            let cfg = self.config.lock().await;
+            cfg.trigger
+        };
+        if trigger != LintTrigger::OnOpen || true { // always lint on open if requested or default
+            self.lint_and_publish_diagnostics(&uri, &text).await;
+        }
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -102,7 +160,13 @@ impl LanguageServer for Backend {
                 let mut docs = self.documents.lock().await;
                 docs.insert(uri.clone(), text.clone());
             }
-            self.lint_and_publish_diagnostics(&uri, &text).await;
+            let trigger = {
+                let cfg = self.config.lock().await;
+                cfg.trigger
+            };
+            if trigger == LintTrigger::OnEdit {
+                self.lint_and_publish_diagnostics(&uri, &text).await;
+            }
         }
     }
 
@@ -550,6 +614,7 @@ async fn main() {
         client,
         documents: Arc::new(Mutex::new(HashMap::new())),
         dictionary,
+        config: Arc::new(Mutex::new(ServerConfig::default())),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }
