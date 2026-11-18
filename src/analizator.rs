@@ -897,4 +897,507 @@ mod tests {
         let result = analizuj_strumien(cursor, false);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_parse_directive_sylaby_comma_and_brackets() {
+        let res1 = parse_directive("# wierszopis: sylaby=12,12,7,7,8");
+        assert!(res1.is_some());
+        let cfg1 = res1.unwrap().unwrap();
+        assert_eq!(cfg1.sylaby_pattern, Some(vec![12, 12, 7, 7, 8]));
+
+        let res2 = parse_directive("# wierszopis: sylaby=[12, 12, 7, 7, 8]; akcenty = tak");
+        assert!(res2.is_some());
+        let cfg2 = res2.unwrap().unwrap();
+        assert_eq!(cfg2.sylaby_pattern, Some(vec![12, 12, 7, 7, 8]));
+        assert!(cfg2.akcenty_enabled);
+
+        let res3 = parse_directive("# wierszopis: akcenty=nie");
+        assert!(res3.is_some());
+        let cfg3 = res3.unwrap().unwrap();
+        assert!(!cfg3.akcenty_enabled);
+    }
+
+    #[test]
+    fn test_parse_directive_mixed_sylaby() {
+        let res = parse_directive("# wierszopis: sylaby=[6+6,6+6,7,7,8]");
+        assert!(res.is_some());
+        let cfg = res.unwrap().unwrap();
+        assert_eq!(cfg.sylaby_pattern, Some(vec![12, 12, 7, 7, 8]));
+        assert_eq!(
+            cfg.expected_sredniowka_pattern,
+            Some(vec![
+                "6+6".to_string(),
+                "6+6".to_string(),
+                "-".to_string(),
+                "-".to_string(),
+                "-".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_parse_directive_invalid() {
+        let res = parse_directive("# wierszopis: sylaby=abc");
+        assert!(res.is_some());
+        assert!(res.unwrap().is_err());
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct StanzaConfig {
+    pub sylaby_pattern: Option<Vec<usize>>,
+    pub expected_sredniowka_pattern: Option<Vec<String>>,
+    pub rymy_schemat: Option<String>,
+    pub akcenty_enabled: bool,
+}
+
+pub fn parse_directive(line: &str) -> Option<Result<StanzaConfig, String>> {
+    let trimmed = line.trim_start();
+    let content = if let Some(stripped) = trimmed.strip_prefix("//") {
+        stripped.trim()
+    } else if let Some(stripped) = trimmed.strip_prefix('#') {
+        stripped.trim()
+    } else {
+        return None;
+    };
+
+    let content_lower = content.to_lowercase();
+    if !content_lower.starts_with("wierszopis:") && !content_lower.starts_with("@wierszopis:") {
+        return None;
+    }
+
+    let directive_part = if let Some(idx) = content.find(':') {
+        &content[idx + 1..]
+    } else {
+        return Some(Err("Brak dwukropka po prefiksie dyrektywy".to_string()));
+    };
+
+    let mut config = StanzaConfig::default();
+
+    for part in directive_part.split(|c| c == ';' || c == '\n' || c == '\r') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let kv: Vec<&str> = part.splitn(2, '=').map(|s| s.trim()).collect();
+        if kv.len() != 2 {
+            return Some(Err(format!("Niepoprawna para klucz=wartość: '{}'", part)));
+        }
+        let key = kv[0].to_lowercase();
+        let val = kv[1];
+
+        if key == "sylaby" {
+            let val_clean = if val.starts_with('[') && val.ends_with(']') {
+                val[1..val.len()-1].trim()
+            } else {
+                val.trim()
+            };
+
+            let mut syl_pattern = vec![];
+            let mut sred_pattern = vec![];
+
+            for item in val_clean.split(',') {
+                let item = item.trim();
+                if item.is_empty() { continue; }
+
+                if item.contains('+') {
+                    let parts: Vec<&str> = item.split('+').collect();
+                    if parts.len() == 2 {
+                        match (parts[0].trim().parse::<usize>(), parts[1].trim().parse::<usize>()) {
+                            (Ok(p1), Ok(p2)) => {
+                                syl_pattern.push(p1 + p2);
+                                sred_pattern.push(item.to_string());
+                            }
+                            _ => return Some(Err(format!("Niepoprawne wartości średniówki: '{}'", item))),
+                        }
+                    } else {
+                        return Some(Err(format!("Niepoprawny format średniówki: '{}'", item)));
+                    }
+                } else {
+                    match item.parse::<usize>() {
+                        Ok(n) => {
+                            syl_pattern.push(n);
+                            sred_pattern.push("-".to_string());
+                        }
+                        Err(_) => return Some(Err(format!("Niepoprawna liczba sylab: '{}'", item))),
+                    }
+                }
+            }
+
+            if !syl_pattern.is_empty() {
+                config.sylaby_pattern = Some(syl_pattern);
+                config.expected_sredniowka_pattern = Some(sred_pattern);
+            } else {
+                return Some(Err("Pusta lista sylab".to_string()));
+            }
+        } else if key == "rymy" {
+            let val_clean = if val.starts_with('[') && val.ends_with(']') {
+                val[1..val.len()-1].trim()
+            } else {
+                val.trim()
+            };
+            let val_lower = val_clean.to_string().to_lowercase();
+            if !val_lower.is_empty() {
+                config.rymy_schemat = Some(val_lower);
+            } else {
+                return Some(Err("Pusty schemat rymów".to_string()));
+            }
+        } else if key == "akcenty" {
+            let val_lower = val.trim().to_lowercase();
+            match val_lower.as_str() {
+                "tak" => config.akcenty_enabled = true,
+                "nie" => config.akcenty_enabled = false,
+                _ => return Some(Err(format!("Niepoprawna wartość dla opcji akcenty (oczekiwano tak/nie): '{}'", val))),
+            }
+        } else {
+            return Some(Err(format!("Nieznany parametr dyrektywy: '{}'", key)));
+        }
+    }
+
+    Some(Ok(config))
+}
+
+pub fn analyze_document(
+    text: &str,
+) -> (
+    std::collections::HashMap<usize, usize>,
+    std::collections::HashMap<usize, usize>,
+    Vec<Option<Wers>>,
+    Vec<usize>,
+    Vec<usize>,
+) {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut raw_wersy_with_line = vec![];
+    let mut comment_lines = vec![];
+    let mut signature_lines = vec![];
+    let mut _current_config = StanzaConfig::default();
+
+    for (line_idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("//") || trimmed.starts_with('#') {
+            if let Some(Ok(cfg)) = parse_directive(line) {
+                _current_config = cfg;
+            }
+            comment_lines.push(line_idx);
+            continue;
+        }
+
+        let mut comment_idx = None;
+        if let Some(idx) = line.find("//") {
+            comment_idx = Some(idx);
+        }
+        if let Some(idx) = line.find('#') {
+            comment_idx = match comment_idx {
+                Some(existing) => Some(std::cmp::min(existing, idx)),
+                None => Some(idx),
+            };
+        }
+
+        let clean_line = if let Some(idx) = comment_idx {
+            &line[..idx]
+        } else {
+            &line
+        };
+
+        let trimmed_clean = clean_line.trim();
+        if trimmed_clean.is_empty() {
+            raw_wersy_with_line.push((line_idx, wers::nowy_wers("")));
+        } else {
+            raw_wersy_with_line.push((line_idx, wers::nowy_wers(trimmed_clean)));
+        }
+    }
+
+    let mut just_wersy: Vec<Wers> = raw_wersy_with_line.iter().map(|(_, w)| w.clone()).collect();
+    usun_podpis(&mut just_wersy);
+
+    let valid_count = just_wersy.len();
+    let mut wersy = vec![None; lines.len()];
+    let mut active_wersy_with_idx = vec![];
+
+    for i in 0..valid_count {
+        let (line_idx, _) = raw_wersy_with_line[i];
+        let w = just_wersy[i].clone();
+        if !w.oryginalne.is_empty() {
+            wersy[line_idx] = Some(w.clone());
+            active_wersy_with_idx.push((line_idx, w));
+        }
+    }
+
+    for i in valid_count..raw_wersy_with_line.len() {
+        let (line_idx, w) = &raw_wersy_with_line[i];
+        if !w.oryginalne.is_empty() {
+            signature_lines.push(*line_idx);
+        }
+    }
+
+    let mut group_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut group_sizes: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut next_group = 0;
+
+    for i in 0..active_wersy_with_idx.len() {
+        let (line_i, w_i) = &active_wersy_with_idx[i];
+        if group_map.contains_key(line_i) {
+            continue;
+        }
+        let mut members = vec![*line_i];
+
+        for j in (i + 1)..active_wersy_with_idx.len() {
+            let (line_j, w_j) = &active_wersy_with_idx[j];
+            if !group_map.contains_key(line_j) {
+                let (rymuja, _, _) = wers::czy_rymują(w_i, w_j);
+                if rymuja {
+                    members.push(*line_j);
+                }
+            }
+        }
+
+        if members.len() >= 2 {
+            for m in &members {
+                group_map.insert(*m, next_group);
+            }
+            group_sizes.insert(next_group, members.len());
+            next_group += 1;
+        }
+    }
+
+    (group_map, group_sizes, wersy, comment_lines, signature_lines)
+}
+
+pub fn get_accented_spans_for_line(line: &str, wers_obj: &Wers) -> Vec<(u32, u32)> {
+    let text = &wers_obj.surowy_tekst;
+    let mut accented_chars = Vec::new();
+    if text.is_empty() {
+        return accented_chars;
+    }
+
+    let line_offset = if let Some(pos) = line.find(text) {
+        pos
+    } else {
+        0
+    };
+
+    let mut search_start = 0;
+    let mut global_syl_idx = 0;
+    for sw in &wers_obj.słowa {
+        if let Some(word_rel_pos) = text[search_start..].find(&sw.oryginalne) {
+            let word_start = search_start + word_rel_pos;
+            let spans = sw.sylaba_spans();
+            for (_i, &(s_start, s_end)) in spans.iter().enumerate() {
+                let akcent_char = wers_obj.akcent_wersu.chars().nth(global_syl_idx).unwrap_or('s');
+                global_syl_idx += 1;
+
+                let is_accented = akcent_char == 'S';
+                if is_accented {
+                    let abs_start = word_start + s_start.min(sw.oryginalne.len());
+                    let abs_end = word_start + s_end.min(sw.oryginalne.len());
+                    if abs_start < abs_end && abs_end <= text.len() {
+                        let line_byte_start = line_offset + abs_start;
+                        let line_byte_end = line_offset + abs_end;
+
+                        let mut b_start = line_byte_start.min(line.len());
+                        while b_start > 0 && !line.is_char_boundary(b_start) {
+                            b_start -= 1;
+                        }
+                        let mut b_end = line_byte_end.min(line.len());
+                        while b_end < line.len() && !line.is_char_boundary(b_end) {
+                            b_end += 1;
+                        }
+
+                        if b_start < b_end {
+                            let char_start = line[..b_start].chars().count() as u32;
+                            let char_end = line[..b_end].chars().count() as u32;
+                            if char_start < char_end {
+                                accented_chars.push((char_start, char_end));
+                            }
+                        }
+                    }
+                }
+            }
+            search_start = word_start + sw.oryginalne.len();
+        }
+    }
+    accented_chars
+}
+
+#[cfg(feature = "lsp")]
+pub fn compute_diagnostics(text: &str) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    use tower_lsp::lsp_types::*;
+    let lines: Vec<&str> = text.lines().collect();
+    let mut diagnostics = vec![];
+    let (_group_map, _group_sizes, wersy, comment_lines, _signature_lines) = analyze_document(text);
+
+    let mut current_config = StanzaConfig::default();
+    let mut verse_in_block_idx = 0;
+
+    for (line_idx, line) in lines.iter().enumerate() {
+        if comment_lines.contains(&line_idx) {
+            match parse_directive(line) {
+                Some(Ok(cfg)) => {
+                    current_config = cfg;
+                    verse_in_block_idx = 0;
+                }
+                Some(Err(err_msg)) => {
+                    let chars: Vec<char> = line.chars().collect();
+                    let start = chars.iter().position(|c| !c.is_whitespace()).unwrap_or(0);
+                    let end = chars.iter().rposition(|c| !c.is_whitespace()).map(|i| i + 1).unwrap_or(chars.len());
+                    diagnostics.push(Diagnostic {
+                        range: Range {
+                            start: Position { line: line_idx as u32, character: start as u32 },
+                            end: Position { line: line_idx as u32, character: end as u32 },
+                        },
+                        severity: Some(DiagnosticSeverity::WARNING),
+                        code: Some(NumberOrString::String("directive-error".to_string())),
+                        source: Some("wierszopis-lsp".to_string()),
+                        message: format!("Błąd parsowania dyrektywy: {}", err_msg),
+                        ..Default::default()
+                    });
+                }
+                None => {}
+            }
+            continue;
+        }
+
+        let Some(ref w) = wersy[line_idx] else {
+            if line.trim().is_empty() {
+                verse_in_block_idx = 0;
+            }
+            continue;
+        };
+
+        if w.oryginalne.is_empty() {
+            verse_in_block_idx = 0;
+            continue;
+        }
+
+        let chars: Vec<char> = line.chars().collect();
+        let start = chars.iter().position(|c| !c.is_whitespace()).unwrap_or(0);
+        let end = chars.iter().rposition(|c| !c.is_whitespace()).map(|i| i + 1).unwrap_or(chars.len());
+
+        if let Some(ref pattern) = current_config.sylaby_pattern {
+            let expected = pattern[verse_in_block_idx % pattern.len()];
+            let actual = w.liczba_sylab;
+            if actual != expected {
+                diagnostics.push(Diagnostic {
+                    range: Range {
+                        start: Position { line: line_idx as u32, character: start as u32 },
+                        end: Position { line: line_idx as u32, character: end as u32 },
+                    },
+                    severity: Some(DiagnosticSeverity::WARNING),
+                    code: Some(NumberOrString::String("sylaby-mismatch".to_string())),
+                    source: Some("wierszopis-lsp".to_string()),
+                    message: format!("Oczekiwano {} sylab, wykryto {} sylab.", expected, actual),
+                    ..Default::default()
+                });
+            }
+        }
+
+        if let Some(ref expected_sred_pattern) = current_config.expected_sredniowka_pattern {
+            let expected_sred = &expected_sred_pattern[verse_in_block_idx % expected_sred_pattern.len()];
+            if expected_sred != "-" && w.średniówka != *expected_sred {
+                diagnostics.push(Diagnostic {
+                    range: Range {
+                        start: Position { line: line_idx as u32, character: start as u32 },
+                        end: Position { line: line_idx as u32, character: end as u32 },
+                    },
+                    severity: Some(DiagnosticSeverity::WARNING),
+                    code: Some(NumberOrString::String("średniówka-mismatch".to_string())),
+                    source: Some("wierszopis-lsp".to_string()),
+                    message: format!("Oczekiwano średniówki '{}', wykryto '{}'.", expected_sred, w.średniówka),
+                    ..Default::default()
+                });
+            }
+        }
+
+        verse_in_block_idx += 1;
+    }
+
+    let active_verses: Vec<(usize, Wers, StanzaConfig)> = {
+        let mut res = vec![];
+        let mut curr_cfg = StanzaConfig::default();
+        for (line_idx, line) in lines.iter().enumerate() {
+            if comment_lines.contains(&line_idx) {
+                if let Some(Ok(cfg)) = parse_directive(line) {
+                    curr_cfg = cfg;
+                }
+            }
+            if let Some(ref w) = wersy[line_idx] {
+                if !w.oryginalne.is_empty() {
+                    res.push((line_idx, w.clone(), curr_cfg.clone()));
+                }
+            }
+        }
+        res
+    };
+
+    let mut i = 0;
+    while i < active_verses.len() {
+        let (_, _, ref cfg) = active_verses[i];
+        if let Some(ref scheme) = cfg.rymy_schemat {
+            let scheme_chars: Vec<char> = scheme
+                .chars()
+                .filter(|c| c.is_ascii_alphabetic())
+                .map(|c| c.to_ascii_lowercase())
+                .collect();
+            let block_len = scheme_chars.len();
+            if block_len > 0 && i + block_len <= active_verses.len() {
+                let mut block_verses = vec![];
+                for offset in 0..block_len {
+                    let (line_idx, ref w, _) = active_verses[i + offset];
+                    let letter = scheme_chars[offset];
+                    block_verses.push((line_idx, w.clone(), letter));
+                }
+
+                for a_idx in 0..block_verses.len() {
+                    for b_idx in (a_idx + 1)..block_verses.len() {
+                        let (line_a, ref w_a, char_a) = block_verses[a_idx];
+                        let (line_b, ref w_b, char_b) = block_verses[b_idx];
+                        let (rymuja, _, _) = wers::czy_rymują(w_a, w_b);
+
+                        let line = lines[line_a];
+                        let chars: Vec<char> = line.chars().collect();
+                        let start = chars.iter().position(|c| !c.is_whitespace()).unwrap_or(0);
+                        let end = chars.iter().rposition(|c| !c.is_whitespace()).map(|i| i + 1).unwrap_or(chars.len());
+
+                        if char_a == char_b {
+                            if !rymuja {
+                                diagnostics.push(Diagnostic {
+                                    range: Range {
+                                        start: Position { line: line_a as u32, character: start as u32 },
+                                        end: Position { line: line_a as u32, character: end as u32 },
+                                    },
+                                    severity: Some(DiagnosticSeverity::WARNING),
+                                    code: Some(NumberOrString::String("rymy-mismatch".to_string())),
+                                    source: Some("wierszopis-lsp".to_string()),
+                                    message: format!("Wers {} miał rymować się z wersem {} (grupa '{}') według schematu '{}', ale rym nie występuje.", line_a + 1, line_b + 1, char_a, scheme),
+                                    ..Default::default()
+                                });
+                            }
+                        } else {
+                            if rymuja {
+                                diagnostics.push(Diagnostic {
+                                    range: Range {
+                                        start: Position { line: line_a as u32, character: start as u32 },
+                                        end: Position { line: line_a as u32, character: end as u32 },
+                                    },
+                                    severity: Some(DiagnosticSeverity::WARNING),
+                                    code: Some(NumberOrString::String("rymy-unexpected".to_string())),
+                                    source: Some("wierszopis-lsp".to_string()),
+                                    message: format!("Wers {} i wers {} nie powinny się rymować (różne grupy '{}' i '{}') według schematu '{}'.", line_a + 1, line_b + 1, char_a, char_b, scheme),
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                    }
+                }
+
+                i += block_len;
+            } else {
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    diagnostics
 }
