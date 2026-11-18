@@ -24,7 +24,6 @@ pub fn wyznacz_akcent_wersu(słowa: &[Słowo]) -> String {
     let proclitics_di = ["beze", "pode", "nade", "przede", "przeze", "poza"];
     let enclitics = ["ci", "go", "ją", "mu", "was", "się", "mi"];
 
-    // Handle runs of consecutive monosyllabic words with alternating S s S s
     let mut multi_run_indices = vec![false; słowa.len()];
     let mut idx_run = 0;
     while idx_run < słowa.len() {
@@ -40,11 +39,7 @@ pub fn wyznacz_akcent_wersu(słowa: &[Słowo]) -> String {
                 }
             }
             for (offset, idx) in (start..end).enumerate() {
-                if offset % 2 == 0 {
-                    word_accents[idx] = "S".to_string();
-                } else {
-                    word_accents[idx] = "s".to_string();
-                }
+                word_accents[idx] = if offset % 2 == 0 { "S".to_string() } else { "s".to_string() };
             }
         } else {
             idx_run += 1;
@@ -64,28 +59,22 @@ pub fn wyznacz_akcent_wersu(słowa: &[Słowo]) -> String {
                 acc[len - 1] = 'S';
                 word_accents[i] = acc.into_iter().collect();
             }
-            let next_len = word_accents[i + 1].len();
-            word_accents[i + 1] = "s".repeat(next_len);
+            word_accents[i + 1] = "s".repeat(word_accents[i + 1].len());
         } else if w_lower == "nie" && i + 1 < słowa.len() {
             let next_len = word_accents[i + 1].len();
             if next_len == 1 {
-                // "nie" + monosyllabic verb (e.g., "nie wiem", "nie chce") -> accent on "nie" (S), verb unstressed (s)
                 word_accents[i] = "S".to_string();
                 word_accents[i + 1] = "s".to_string();
             } else {
-                // "nie" + disyllabic or longer verb -> proclitic, "nie" is unstressed (s)
-                let len = word_accents[i].len();
-                word_accents[i] = "s".repeat(len);
+                word_accents[i] = "s".repeat(word_accents[i].len());
             }
         } else if i > 0 && proclitics_mono.contains(&w_lower.as_str()) && i + 1 < słowa.len() {
             let next_len = word_accents[i + 1].len();
             let len = word_accents[i].len();
             if next_len == 1 {
-                // Monosyllabic preposition + monosyllabic word (e.g., "bez nich", "do was") -> accent on preposition (S), following word unstressed (s)
                 word_accents[i] = "S".repeat(len);
                 word_accents[i + 1] = "s".to_string();
             } else {
-                // Monosyllabic preposition + disyllabic/longer word -> preposition is unstressed (s)
                 word_accents[i] = "s".repeat(len);
             }
         }
@@ -117,12 +106,10 @@ pub fn kandydaci_średniówki(słowa: &[Słowo], liczba_sylab: usize) -> Vec<(St
     for k in 0..(słowa.len() - 1) {
         let x = syl_counts[k];
         let y = liczba_sylab - x;
-
         if x < 2 || y < 2 {
             continue;
         }
 
-        // Balance / asymmetry cost: abs(x - y) * cost
         let asymmetry = (x as i32 - y as i32).abs();
         let mut score = 100 - (asymmetry * 5);
 
@@ -142,34 +129,25 @@ pub fn kandydaci_średniówki(słowa: &[Słowo], liczba_sylab: usize) -> Vec<(St
             _ => {}
         }
 
-        if x > 0 && x <= akcent.len() {
-            let char_at_x = akcent.chars().nth(x - 1).unwrap_or('s');
-            if char_at_x == 'S' {
-                score -= 15;
-            }
+        if x > 0 && x <= akcent.len() && akcent.chars().nth(x - 1) == Some('S') {
+            score -= 15;
+        }
+        if x >= 2 && x <= akcent.len() && akcent.chars().nth(x - 2) == Some('S') {
+            score += 15;
         }
 
-        if x >= 2 && x <= akcent.len() {
-            let penultimate_char = akcent.chars().nth(x - 2).unwrap_or('s');
-            if penultimate_char == 'S' {
-                score += 15;
-            }
-        }
-
-        let label = format!("{}+{}", x, y);
-        candidates.push((label, score));
+        candidates.push((format!("{}+{}", x, y), score));
     }
 
     candidates
 }
 
 pub fn wyznacz_średniówkę(słowa: &[Słowo], liczba_sylab: usize) -> String {
-    let cands = kandydaci_średniówki(słowa, liczba_sylab);
-    if let Some((best_label, _)) = cands.into_iter().max_by_key(|&(_, score)| score) {
-        best_label
-    } else {
-        "-".to_string()
-    }
+    kandydaci_średniówki(słowa, liczba_sylab)
+        .into_iter()
+        .max_by_key(|&(_, score)| score)
+        .map(|(label, _)| label)
+        .unwrap_or_else(|| "-".to_string())
 }
 
 pub fn nowy_wers(tekst: &str) -> Wers {
@@ -188,12 +166,11 @@ pub fn nowy_wers(tekst: &str) -> Wers {
         };
     }
 
-    let surowe_słowa: Vec<&str> = czyste.split_whitespace().collect();
     let mut słowa = Vec::new();
     let mut całkowita_liczba_sylab = 0;
     let mut wszystkie_głoski = Vec::new();
 
-    for sw in surowe_słowa {
+    for sw in czyste.split_whitespace() {
         let czyste_słowo: String = sw
             .chars()
             .filter(|c| c.is_alphabetic() || "ąęśćżźńłóĄĘŚĆŻŹŃŁÓ".contains(*c))
@@ -207,25 +184,20 @@ pub fn nowy_wers(tekst: &str) -> Wers {
         słowa.push(s);
     }
 
-    let mut indeksy_samogłosek = Vec::new();
-    for (i, g) in wszystkie_głoski.iter().enumerate() {
-        if czy_głoska_samogłoska(g) {
-            indeksy_samogłosek.push(i);
-        }
-    }
+    let indeksy_samogłosek: Vec<usize> = wszystkie_głoski
+        .iter()
+        .enumerate()
+        .filter(|(_, g)| czy_głoska_samogłoska(g))
+        .map(|(i, _)| i)
+        .collect();
 
-    let mut rym_meski = Vec::new();
-    let mut rym_zenski = Vec::new();
-
-    if !indeksy_samogłosek.is_empty() {
-        let ostatnia = indeksy_samogłosek[indeksy_samogłosek.len() - 1];
-        rym_meski = wszystkie_głoski[ostatnia..].to_vec();
-    }
-
-    if indeksy_samogłosek.len() >= 2 {
-        let przedostatnia = indeksy_samogłosek[indeksy_samogłosek.len() - 2];
-        rym_zenski = wszystkie_głoski[przedostatnia..].to_vec();
-    }
+    let rym_meski = indeksy_samogłosek.last().map(|&o| wszystkie_głoski[o..].to_vec()).unwrap_or_default();
+    let rym_zenski = if indeksy_samogłosek.len() >= 2 {
+        let p = indeksy_samogłosek[indeksy_samogłosek.len() - 2];
+        wszystkie_głoski[p..].to_vec()
+    } else {
+        vec![]
+    };
 
     let akcent_wersu = wyznacz_akcent_wersu(&słowa);
     let średniówka = wyznacz_średniówkę(&słowa, całkowita_liczba_sylab);
@@ -247,34 +219,18 @@ pub fn czy_rymują(w1: &Wers, w2: &Wers) -> (bool, i32, i32) {
         return (false, 999, 0);
     }
 
-    let last1 = &w1.słowa[w1.słowa.len() - 1];
-    let last2 = &w2.słowa[w2.słowa.len() - 1];
+    let n1 = w1.słowa.last().unwrap().głoski.iter().filter(|g| czy_głoska_samogłoska(g)).count();
+    let n2 = w2.słowa.last().unwrap().głoski.iter().filter(|g| czy_głoska_samogłoska(g)).count();
 
-    let num_vowels =
-        |s: &Słowo| -> usize { s.głoski.iter().filter(|g| czy_głoska_samogłoska(g)).count() };
-
-    let n1 = num_vowels(last1);
-    let n2 = num_vowels(last2);
-
-    // 1) Oba kończą się jednosylabowym słowem -> rymy męskie
-    if n1 == 1 && n2 == 1 {
-        if !w1.rym_meski.is_empty() && !w2.rym_meski.is_empty() {
-            return rym::porównaj_rymy(&w1.rym_meski, &w2.rym_meski);
-        }
-        return (false, 999, 0);
+    if n1 == 1 && n2 == 1 && !w1.rym_meski.is_empty() && !w2.rym_meski.is_empty() {
+        return rym::porównaj_rymy(&w1.rym_meski, &w2.rym_meski);
     }
-
-    // 2) Co najmniej jeden kończy się słowem dwusylabowym (lub wielosylabowym) -> rymy żeńskie
-    if n1 >= 2 || n2 >= 2 {
-        if !w1.rym_zenski.is_empty() && !w2.rym_zenski.is_empty() {
-            return rym::porównaj_rymy(&w1.rym_zenski, &w2.rym_zenski);
-        }
+    if (n1 >= 2 || n2 >= 2) && !w1.rym_zenski.is_empty() && !w2.rym_zenski.is_empty() {
+        return rym::porównaj_rymy(&w1.rym_zenski, &w2.rym_zenski);
     }
-
     if !w1.rym_zenski.is_empty() && !w2.rym_zenski.is_empty() {
         return rym::porównaj_rymy(&w1.rym_zenski, &w2.rym_zenski);
     }
-
     if !w1.rym_meski.is_empty() && !w2.rym_meski.is_empty() {
         return rym::porównaj_rymy(&w1.rym_meski, &w2.rym_meski);
     }
@@ -282,22 +238,18 @@ pub fn czy_rymują(w1: &Wers, w2: &Wers) -> (bool, i32, i32) {
     (false, 999, 0)
 }
 
-pub fn wyznacz_podswietlone_czesci(wers: &Wers) -> Vec<(String, bool)> {
+pub fn wyznacz_podświetlone_części(wers: &Wers) -> Vec<(String, bool)> {
     let text = &wers.surowy_tekst;
     let mut accented_spans = Vec::new();
+    let (mut search_start, mut global_syl_idx) = (0, 0);
 
-    let mut search_start = 0;
-    let mut global_syl_idx = 0;
     for sw in &wers.słowa {
         if let Some(word_rel_pos) = text[search_start..].find(&sw.oryginalne) {
             let word_start = search_start + word_rel_pos;
-            let spans = sw.sylaba_spans();
-            for (_i, &(s_start, s_end)) in spans.iter().enumerate() {
+            for &(s_start, s_end) in &sw.sylaba_spans() {
                 let akcent_char = wers.akcent_wersu.chars().nth(global_syl_idx).unwrap_or('s');
                 global_syl_idx += 1;
-
-                let is_accented = akcent_char == 'S';
-                if is_accented {
+                if akcent_char == 'S' {
                     let abs_start = word_start + s_start.min(sw.oryginalne.len());
                     let abs_end = word_start + s_end.min(sw.oryginalne.len());
                     if abs_start < abs_end && abs_end <= text.len() {
@@ -310,23 +262,22 @@ pub fn wyznacz_podswietlone_czesci(wers: &Wers) -> Vec<(String, bool)> {
     }
 
     accented_spans.sort_by_key(|&(start, _)| start);
-    let mut merged_spans: Vec<(usize, usize)> = Vec::new();
+    let mut merged: Vec<(usize, usize)> = Vec::new();
     for span in accented_spans {
-        if let Some(last) = merged_spans.last_mut() {
+        if let Some(last) = merged.last_mut() {
             if span.0 <= last.1 {
                 last.1 = last.1.max(span.1);
             } else {
-                merged_spans.push(span);
+                merged.push(span);
             }
         } else {
-            merged_spans.push(span);
+            merged.push(span);
         }
     }
 
     let mut result = Vec::new();
     let mut last_idx = 0;
-
-    for &(start, end) in &merged_spans {
+    for &(start, end) in &merged {
         if start > last_idx {
             result.push((text[last_idx..start].to_string(), false));
         }
@@ -337,6 +288,128 @@ pub fn wyznacz_podswietlone_czesci(wers: &Wers) -> Vec<(String, bool)> {
         result.push((text[last_idx..].to_string(), false));
     }
     result
+}
+
+pub fn usun_podpis(wersy: &mut Vec<Wers>) {
+    while let Some(w) = wersy.last() {
+        if w.oryginalne.is_empty() { wersy.pop(); } else { break; }
+    }
+    if wersy.is_empty() { return; }
+
+    let mut idx = wersy.len() - 1;
+    let mut stanza_start = idx;
+    let mut stanza_len = 0;
+
+    while idx < wersy.len() {
+        if wersy[idx].oryginalne.is_empty() { break; }
+        stanza_start = idx;
+        stanza_len += 1;
+        if idx == 0 { break; }
+        idx -= 1;
+    }
+
+    if stanza_len == 1 && wersy[stanza_start].surowy_tekst.trim_start().starts_with("--") {
+        wersy.truncate(stanza_start);
+        while let Some(w) = wersy.last() {
+            if w.oryginalne.is_empty() { wersy.pop(); } else { break; }
+        }
+    }
+}
+
+pub fn czy_lekka_modyfikacja_wersu(w1: &Wers, w2: &Wers) -> bool {
+    if w1.liczba_sylab != w2.liczba_sylab || w1.akcent_wersu != w2.akcent_wersu {
+        return false;
+    }
+    let w1_last = w1.słowa.last().map(|s| s.oryginalne.to_lowercase());
+    let w2_last = w2.słowa.last().map(|s| s.oryginalne.to_lowercase());
+    if w1_last != w2_last {
+        return false;
+    }
+
+    let words1: Vec<String> = w1.słowa.iter().map(|s| s.oryginalne.to_lowercase()).collect();
+    let words2: Vec<String> = w2.słowa.iter().map(|s| s.oryginalne.to_lowercase()).collect();
+    let n = words1.len();
+    if n == 0 {
+        return w1.oryginalne.trim().to_lowercase() == w2.oryginalne.trim().to_lowercase();
+    }
+
+    let max_len = words1.len().max(words2.len());
+    let min_len = words1.len().min(words2.len());
+    let mut diff_count = max_len - min_len;
+    for i in 0..min_len {
+        if words1[i] != words2[i] { diff_count += 1; }
+    }
+    diff_count <= ((n as f64) / 5.0).ceil() as usize
+}
+
+pub fn is_lekka_modyfikacja_wersu(w1: &Wers, w2: &Wers) -> bool {
+    czy_lekka_modyfikacja_wersu(w1, w2)
+}
+
+pub fn wyznacz_zaakcentowane_zakresy_dla_linii(linia: &str, wers_obj: &Wers) -> Vec<(u32, u32)> {
+    let text = &wers_obj.surowy_tekst;
+    if text.is_empty() { return vec![]; }
+
+    let line_offset = linia.find(text).unwrap_or(0);
+    let mut accented_chars = Vec::new();
+    let (mut search_start, mut global_syl_idx) = (0, 0);
+
+    for sw in &wers_obj.słowa {
+        if let Some(word_rel_pos) = text[search_start..].find(&sw.oryginalne) {
+            let word_start = search_start + word_rel_pos;
+            for &(s_start, s_end) in &sw.sylaba_spans() {
+                let akcent_char = wers_obj.akcent_wersu.chars().nth(global_syl_idx).unwrap_or('s');
+                global_syl_idx += 1;
+                if akcent_char == 'S' {
+                    let abs_start = word_start + s_start.min(sw.oryginalne.len());
+                    let abs_end = word_start + s_end.min(sw.oryginalne.len());
+                    if abs_start < abs_end && abs_end <= text.len() {
+                        let (mut b_start, mut b_end) = (line_offset + abs_start, line_offset + abs_end);
+                        b_start = b_start.min(linia.len());
+                        while b_start > 0 && !linia.is_char_boundary(b_start) { b_start -= 1; }
+                        b_end = b_end.min(linia.len());
+                        while b_end < linia.len() && !linia.is_char_boundary(b_end) { b_end += 1; }
+
+                        if b_start < b_end {
+                            let char_start = linia[..b_start].chars().count() as u32;
+                            let char_end = linia[..b_end].chars().count() as u32;
+                            if char_start < char_end {
+                                accented_chars.push((char_start, char_end));
+                            }
+                        }
+                    }
+                }
+            }
+            search_start = word_start + sw.oryginalne.len();
+        }
+    }
+    accented_chars
+}
+
+pub fn wyznacz_podswietlone_czesci(wers: &Wers) -> Vec<(String, bool)> {
+    wyznacz_podświetlone_części(wers)
+}
+
+pub fn get_accented_spans_for_line(linia: &str, wers_obj: &Wers) -> Vec<(u32, u32)> {
+    wyznacz_zaakcentowane_zakresy_dla_linii(linia, wers_obj)
+}
+
+fn czy_głoska_samogłoska(głoska: &str) -> bool {
+    rym::czy_samogloska(głoska)
+}
+
+impl Wers {
+    pub fn czy_lekka_modyfikacja(&self, other: &Wers) -> bool {
+        czy_lekka_modyfikacja_wersu(self, other)
+    }
+
+    pub fn wyznacz_podświetlone_części(&self) -> Vec<(String, bool)> {
+        wyznacz_podświetlone_części(self)
+    }
+
+    pub fn wyznacz_zaakcentowane_zakresy(&self, linia: &str) -> Vec<(u32, u32)> {
+        wyznacz_zaakcentowane_zakresy_dla_linii(linia, self)
+    }
 }
 
 #[cfg(test)]
@@ -350,48 +423,16 @@ mod tests {
 
     #[test]
     fn akcent_zdaniowy() {
-        assert_eq!(
-            nowy_wers("w objęcia mocno chwytając").akcent_wersu,
-            "sSsSssSs"
-        );
-
-        // trochej
-        assert_eq!(
-            nowy_wers("Nie rusz, Andziu, tego kwiatka,").akcent_wersu,
-            "SsSsSsSs"
-        );
-        assert_eq!(
-            nowy_wers("Róża kole – rzekła matka.").akcent_wersu,
-            "SsSsSsSs"
-        );
-        assert_eq!(
-            nowy_wers("Między nami nic nie było!").akcent_wersu,
-            "SsSsSsSs"
-        );
-        assert_eq!(
-            nowy_wers("Żadnych zwierzeń, wyznań żadnych,").akcent_wersu,
-            "SsSsSsSs"
-        );
-        assert_eq!(
-            nowy_wers("Nic nas z sobą nie łączyło").akcent_wersu,
-            "SsSsssSs"
-        );
-        assert_eq!(
-            nowy_wers("Prócz wiosennych marzeń zdradnych;").akcent_wersu,
-            "SsSsSsSs"
-        );
-        assert_eq!(
-            nowy_wers("Prócz tych woni, barw i blasków").akcent_wersu,
-            "SsSsSsSs"
-        );
-        assert_eq!(
-            nowy_wers("Prócz szumiących śpiewem lasków").akcent_wersu,
-            "SsSsSsSs"
-        );
-        assert_eq!(
-            nowy_wers("I tej świeżej łąk zieleni;").akcent_wersu,
-            "SsSsSsSs"
-        );
+        assert_eq!(nowy_wers("w objęcia mocno chwytając").akcent_wersu, "sSsSssSs");
+        assert_eq!(nowy_wers("Nie rusz, Andziu, tego kwiatka,").akcent_wersu, "SsSsSsSs");
+        assert_eq!(nowy_wers("Róża kole – rzekła matka.").akcent_wersu, "SsSsSsSs");
+        assert_eq!(nowy_wers("Między nami nic nie było!").akcent_wersu, "SsSsSsSs");
+        assert_eq!(nowy_wers("Żadnych zwierzeń, wyznań żadnych,").akcent_wersu, "SsSsSsSs");
+        assert_eq!(nowy_wers("Nic nas z sobą nie łączyło").akcent_wersu, "SsSsssSs");
+        assert_eq!(nowy_wers("Prócz wiosennych marzeń zdradnych;").akcent_wersu, "SsSsSsSs");
+        assert_eq!(nowy_wers("Prócz tych woni, barw i blasków").akcent_wersu, "SsSsSsSs");
+        assert_eq!(nowy_wers("Prócz szumiących śpiewem lasków").akcent_wersu, "SsSsSsSs");
+        assert_eq!(nowy_wers("I tej świeżej łąk zieleni;").akcent_wersu, "SsSsSsSs");
         assert_eq!(
             nowy_wers("Niedostępna ludzkim oczom, że nikt po niej się nie błąka,").akcent_wersu,
             "PsSsSsSsSsSsSsSs"
@@ -417,193 +458,19 @@ mod tests {
         assert_eq!(w.liczba_sylab, 13);
         assert_eq!(w.średniówka, "7+6");
 
-        // 11 sylab, np. 5+6 or 6+5
         let w11 = nowy_wers("Któryś jest w niebie, bądź pochwalon Panie");
         assert_eq!(w11.liczba_sylab, 11);
-        // Sprawdzamy czy wybiera zrównoważony podział (np. 5+6 lub 6+5)
         assert!(w11.średniówka == "5+6" || w11.średniówka == "6+5");
     }
 
     #[test]
     fn test_nowe_zasady_średniówki() {
-        // Test asymetrii 7+6 vs 6+7 i minimalnej liczby sylab w półwersie
         let cands = kandydaci_średniówki(
             &nowy_wers("Litwo! Ojczyzno moja! ty jesteś jak zdrowie").słowa,
             13,
         );
-        // Znajdź 7+6 i 6+7 i sprawdź, czy 7+6 ma wyższy wynik
-        let score_7_6 = cands
-            .iter()
-            .find(|(l, _)| l == "7+6")
-            .map(|&(_, s)| s)
-            .unwrap_or(0);
-        let score_6_7 = cands
-            .iter()
-            .find(|(l, _)| l == "6+7")
-            .map(|&(_, s)| s)
-            .unwrap_or(0);
+        let score_7_6 = cands.iter().find(|(l, _)| l == "7+6").map(|&(_, s)| s).unwrap_or(0);
+        let score_6_7 = cands.iter().find(|(l, _)| l == "6+7").map(|&(_, s)| s).unwrap_or(0);
         assert!(score_7_6 > score_6_7);
     }
-}
-
-fn czy_głoska_samogłoska(głoska: &str) -> bool {
-    rym::czy_samogloska(głoska)
-}
-
-impl Wers {
-    pub fn is_lekka_modyfikacja(&self, other: &Wers) -> bool {
-        is_lekka_modyfikacja_wersu(self, other)
-    }
-
-    pub fn wyznacz_podswietlone_czesci_meth(&self) -> Vec<(String, bool)> {
-        wyznacz_podswietlone_czesci(self)
-    }
-
-    pub fn get_accented_spans(&self, line: &str) -> Vec<(u32, u32)> {
-        get_accented_spans_for_line(line, self)
-    }
-}
-
-pub fn usun_podpis(wersy: &mut Vec<Wers>) {
-    while let Some(w) = wersy.last() {
-        if w.oryginalne.is_empty() {
-            wersy.pop();
-        } else {
-            break;
-        }
-    }
-
-    if wersy.is_empty() {
-        return;
-    }
-
-    let mut idx = wersy.len() - 1;
-    let mut stanza_start = idx;
-    let mut stanza_len = 0;
-
-    while idx < wersy.len() {
-        if wersy[idx].oryginalne.is_empty() {
-            break;
-        }
-        stanza_start = idx;
-        stanza_len += 1;
-        if idx == 0 {
-            break;
-        }
-        idx -= 1;
-    }
-
-    if stanza_len == 1 {
-        let text = wersy[stanza_start].surowy_tekst.trim_start();
-        if text.starts_with("--") {
-            wersy.truncate(stanza_start);
-            while let Some(w) = wersy.last() {
-                if w.oryginalne.is_empty() {
-                    wersy.pop();
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-}
-
-pub fn is_lekka_modyfikacja_wersu(w1: &Wers, w2: &Wers) -> bool {
-    if w1.liczba_sylab != w2.liczba_sylab {
-        return false;
-    }
-    if w1.akcent_wersu != w2.akcent_wersu {
-        return false;
-    }
-    let w1_last = w1.słowa.last().map(|s| s.oryginalne.to_lowercase());
-    let w2_last = w2.słowa.last().map(|s| s.oryginalne.to_lowercase());
-    if w1_last != w2_last {
-        return false;
-    }
-
-    let words1: Vec<String> = w1
-        .słowa
-        .iter()
-        .map(|s| s.oryginalne.to_lowercase())
-        .collect();
-    let words2: Vec<String> = w2
-        .słowa
-        .iter()
-        .map(|s| s.oryginalne.to_lowercase())
-        .collect();
-    let n = words1.len();
-    if n == 0 {
-        return w1.oryginalne.trim().to_lowercase() == w2.oryginalne.trim().to_lowercase();
-    }
-
-    let max_len = std::cmp::max(words1.len(), words2.len());
-    let min_len = std::cmp::min(words1.len(), words2.len());
-    let mut diff_count = max_len - min_len;
-    for i in 0..min_len {
-        if words1[i] != words2[i] {
-            diff_count += 1;
-        }
-    }
-    let allowed_diff = ((n as f64) / 5.0).ceil() as usize;
-    diff_count <= allowed_diff
-}
-
-pub fn get_accented_spans_for_line(line: &str, wers_obj: &Wers) -> Vec<(u32, u32)> {
-    let text = &wers_obj.surowy_tekst;
-    let mut accented_chars = Vec::new();
-    if text.is_empty() {
-        return accented_chars;
-    }
-
-    let line_offset = if let Some(pos) = line.find(text) {
-        pos
-    } else {
-        0
-    };
-
-    let mut search_start = 0;
-    let mut global_syl_idx = 0;
-    for sw in &wers_obj.słowa {
-        if let Some(word_rel_pos) = text[search_start..].find(&sw.oryginalne) {
-            let word_start = search_start + word_rel_pos;
-            let spans = sw.sylaba_spans();
-            for (_i, &(s_start, s_end)) in spans.iter().enumerate() {
-                let akcent_char = wers_obj
-                    .akcent_wersu
-                    .chars()
-                    .nth(global_syl_idx)
-                    .unwrap_or('s');
-                global_syl_idx += 1;
-
-                let is_accented = akcent_char == 'S';
-                if is_accented {
-                    let abs_start = word_start + s_start.min(sw.oryginalne.len());
-                    let abs_end = word_start + s_end.min(sw.oryginalne.len());
-                    if abs_start < abs_end && abs_end <= text.len() {
-                        let line_byte_start = line_offset + abs_start;
-                        let line_byte_end = line_offset + abs_end;
-
-                        let mut b_start = line_byte_start.min(line.len());
-                        while b_start > 0 && !line.is_char_boundary(b_start) {
-                            b_start -= 1;
-                        }
-                        let mut b_end = line_byte_end.min(line.len());
-                        while b_end < line.len() && !line.is_char_boundary(b_end) {
-                            b_end += 1;
-                        }
-
-                        if b_start < b_end {
-                            let char_start = line[..b_start].chars().count() as u32;
-                            let char_end = line[..b_end].chars().count() as u32;
-                            if char_start < char_end {
-                                accented_chars.push((char_start, char_end));
-                            }
-                        }
-                    }
-                }
-            }
-            search_start = word_start + sw.oryginalne.len();
-        }
-    }
-    accented_chars
 }
