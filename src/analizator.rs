@@ -93,6 +93,21 @@ impl AnalizaWiersza {
     pub fn analizuj_rymy(&mut self) {
         let mut dsu: Vec<usize> = (0..self.wersy.len()).collect();
 
+        let mut stanza_idx = 0;
+        let mut line_stanza = vec![0; self.wersy.len()];
+        let mut in_stanza = false;
+        for (idx, z) in self.wersy.iter().enumerate() {
+            if z.wers.oryginalne.is_empty() {
+                if in_stanza {
+                    stanza_idx += 1;
+                    in_stanza = false;
+                }
+            } else {
+                in_stanza = true;
+                line_stanza[idx] = stanza_idx;
+            }
+        }
+
         for i in 0..self.wersy.len() {
             if self.wersy[i].wers.oryginalne.is_empty() {
                 continue;
@@ -119,21 +134,17 @@ impl AnalizaWiersza {
                     continue;
                 }
 
+                let stanza_diff = line_stanza[i] as i32 - line_stanza[j] as i32;
+                if stanza_diff > 1 {
+                    continue;
+                }
+
                 let (ok, koszt, max_k) = wers::czy_rymują(b_wers, a_wers);
                 if !ok {
                     continue;
                 }
 
-                // Check if j is in the same stanza as i
-                let mut same_stanza = true;
-                for k in (j + 1)..i {
-                    if self.wersy[k].wers.oryginalne.is_empty() {
-                        same_stanza = false;
-                        break;
-                    }
-                }
-
-                if same_stanza {
+                if stanza_diff == 0 {
                     if koszt < min_koszt_w {
                         min_koszt_w = koszt;
                         best_max_w = max_k;
@@ -326,6 +337,9 @@ impl AnalizaWiersza {
         }
 
         let mut group_to_paleta_idx = std::collections::HashMap::new();
+        let palette_len = PALETA_KOLORÓW.len();
+        let mut last_pal_idx = palette_len - 1;
+
         for &g in &groups_in_order {
             let mut forbidden = std::collections::HashSet::new();
             if let Some(neighbors) = adjacencies.get(&g) {
@@ -335,13 +349,14 @@ impl AnalizaWiersza {
                     }
                 }
             }
-            let mut color_idx = 0;
-            while forbidden.contains(&(color_idx % PALETA_KOLORÓW.len()))
-                && color_idx < PALETA_KOLORÓW.len()
-            {
-                color_idx += 1;
+            let mut color_idx = (last_pal_idx + 1) % palette_len;
+            let mut attempts = 0;
+            while forbidden.contains(&color_idx) && attempts < palette_len {
+                color_idx = (color_idx + 1) % palette_len;
+                attempts += 1;
             }
-            group_to_paleta_idx.insert(g, color_idx % PALETA_KOLORÓW.len());
+            group_to_paleta_idx.insert(g, color_idx);
+            last_pal_idx = color_idx;
         }
 
         let mut unikalne_kolory = std::collections::HashMap::new();
@@ -654,6 +669,19 @@ mod tests {
         assert!(analiza.wersy[0].ma_rym);
         assert!(analiza.wersy[1].ma_rym);
         assert_eq!(analiza.wersy[0].kolor, analiza.wersy[1].kolor);
+    }
+
+    #[test]
+    fn test_rym_odleglosc_zwrotek() {
+        let w1 = wers::nowy_wers("bram");
+        let w_pusty1 = wers::nowy_wers("");
+        let w2 = wers::nowy_wers("dom");
+        let w_pusty2 = wers::nowy_wers("");
+        let w3 = wers::nowy_wers("dam");
+        let mut analiza = AnalizaWiersza::nowy(vec![w1, w_pusty1, w2, w_pusty2, w3]);
+        analiza.analizuj_rymy();
+        assert!(!analiza.wersy[0].ma_rym);
+        assert!(!analiza.wersy[4].ma_rym);
     }
 
     #[test]
