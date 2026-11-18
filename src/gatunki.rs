@@ -1,5 +1,5 @@
-use crate::wers::{self, Wers};
 use crate::analizator::ZapisWersu;
+use crate::wers;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RodzajSonetu {
@@ -58,41 +58,12 @@ impl GatunekLiteracki {
     }
 }
 
-pub fn is_lekka_modyfikacja_wersu(w1: &Wers, w2: &Wers) -> bool {
-    if w1.liczba_sylab != w2.liczba_sylab {
-        return false;
-    }
-    if w1.akcent_wersu != w2.akcent_wersu {
-        return false;
-    }
-    let w1_last = w1.słowa.last().map(|s| s.oryginalne.to_lowercase());
-    let w2_last = w2.słowa.last().map(|s| s.oryginalne.to_lowercase());
-    if w1_last != w2_last {
-        return false;
-    }
-
-    let words1: Vec<String> = w1.słowa.iter().map(|s| s.oryginalne.to_lowercase()).collect();
-    let words2: Vec<String> = w2.słowa.iter().map(|s| s.oryginalne.to_lowercase()).collect();
-    let n = words1.len();
-    if n == 0 {
-        return w1.oryginalne.trim().to_lowercase() == w2.oryginalne.trim().to_lowercase();
-    }
-
-    let max_len = std::cmp::max(words1.len(), words2.len());
-    let min_len = std::cmp::min(words1.len(), words2.len());
-    let mut diff_count = max_len - min_len;
-    for i in 0..min_len {
-        if words1[i] != words2[i] {
-            diff_count += 1;
-        }
-    }
-    let allowed_diff = ((n as f64) / 5.0).ceil() as usize;
-    diff_count <= allowed_diff
-}
+pub use wers::is_lekka_modyfikacja_wersu;
 
 pub fn schemat_rymów(wersy: &[ZapisWersu]) -> (String, Vec<usize>) {
     let mut schemat = String::new();
-    let mut mapowanie_kolorów: std::collections::HashMap<usize, char> = std::collections::HashMap::new();
+    let mut mapowanie_kolorów: std::collections::HashMap<usize, char> =
+        std::collections::HashMap::new();
     let mut następna_litera = b'a';
     let mut numery_grup = Vec::new();
 
@@ -160,28 +131,41 @@ pub fn analizuj_sonet(wersy: &[ZapisWersu]) -> Option<RodzajSonetu> {
 
     // 1. Szekspirowski: abab cdcd efef gg
     if normalized[0] != normalized[1]
-        && normalized[2] == normalized[0] && normalized[3] == normalized[1]
+        && normalized[2] == normalized[0]
+        && normalized[3] == normalized[1]
         && normalized[4] != normalized[5]
-        && normalized[6] == normalized[4] && normalized[7] == normalized[5]
-        && normalized[4] != normalized[0] && normalized[4] != normalized[1]
-        && normalized[5] != normalized[0] && normalized[5] != normalized[1]
+        && normalized[6] == normalized[4]
+        && normalized[7] == normalized[5]
+        && normalized[4] != normalized[0]
+        && normalized[4] != normalized[1]
+        && normalized[5] != normalized[0]
+        && normalized[5] != normalized[1]
         && normalized[8] != normalized[9]
-        && normalized[10] == normalized[8] && normalized[11] == normalized[9]
-        && normalized[8] != normalized[0] && normalized[8] != normalized[1]
-        && normalized[8] != normalized[4] && normalized[8] != normalized[5]
-        && normalized[9] != normalized[0] && normalized[9] != normalized[1]
-        && normalized[9] != normalized[4] && normalized[9] != normalized[5]
+        && normalized[10] == normalized[8]
+        && normalized[11] == normalized[9]
+        && normalized[8] != normalized[0]
+        && normalized[8] != normalized[1]
+        && normalized[8] != normalized[4]
+        && normalized[8] != normalized[5]
+        && normalized[9] != normalized[0]
+        && normalized[9] != normalized[1]
+        && normalized[9] != normalized[4]
+        && normalized[9] != normalized[5]
         && normalized[12] == normalized[13]
-        && normalized[12] != normalized[0] && normalized[12] != normalized[1]
-        && normalized[12] != normalized[4] && normalized[12] != normalized[5]
-        && normalized[12] != normalized[8] && normalized[12] != normalized[9]
+        && normalized[12] != normalized[0]
+        && normalized[12] != normalized[1]
+        && normalized[12] != normalized[4]
+        && normalized[12] != normalized[5]
+        && normalized[12] != normalized[8]
+        && normalized[12] != normalized[9]
     {
         return Some(RodzajSonetu::Szekspirowski);
     }
 
     // 2. Spenserowski: abab bcbc cdcd ee
     if normalized[0] != normalized[1]
-        && normalized[2] == normalized[0] && normalized[3] == normalized[1]
+        && normalized[2] == normalized[0]
+        && normalized[3] == normalized[1]
         && normalized[4] == normalized[1]
         && normalized[5] != normalized[4]
         && normalized[6] == normalized[4]
@@ -191,32 +175,59 @@ pub fn analizuj_sonet(wersy: &[ZapisWersu]) -> Option<RodzajSonetu> {
         && normalized[10] == normalized[8]
         && normalized[11] == normalized[9]
         && normalized[12] == normalized[13]
-        && normalized[12] != normalized[0] && normalized[12] != normalized[1]
-        && normalized[12] != normalized[5] && normalized[12] != normalized[9]
+        && normalized[12] != normalized[0]
+        && normalized[12] != normalized[1]
+        && normalized[12] != normalized[5]
+        && normalized[12] != normalized[9]
     {
         return Some(RodzajSonetu::Spenserowski);
     }
 
     // 3. Barnifieldowski: abba cddc effe gg
-    if normalized[0] == normalized[3] && normalized[1] == normalized[2] && normalized[0] != normalized[1]
-        && normalized[4] == normalized[7] && normalized[5] == normalized[6] && normalized[4] != normalized[5]
-        && normalized[4] != normalized[0] && normalized[4] != normalized[1]
-        && normalized[5] != normalized[0] && normalized[5] != normalized[1]
-        && normalized[8] == normalized[11] && normalized[9] == normalized[10] && normalized[8] != normalized[9]
-        && normalized[8] != normalized[0] && normalized[8] != normalized[1] && normalized[8] != normalized[4] && normalized[8] != normalized[5]
-        && normalized[9] != normalized[0] && normalized[9] != normalized[1] && normalized[9] != normalized[4] && normalized[9] != normalized[5]
+    if normalized[0] == normalized[3]
+        && normalized[1] == normalized[2]
+        && normalized[0] != normalized[1]
+        && normalized[4] == normalized[7]
+        && normalized[5] == normalized[6]
+        && normalized[4] != normalized[5]
+        && normalized[4] != normalized[0]
+        && normalized[4] != normalized[1]
+        && normalized[5] != normalized[0]
+        && normalized[5] != normalized[1]
+        && normalized[8] == normalized[11]
+        && normalized[9] == normalized[10]
+        && normalized[8] != normalized[9]
+        && normalized[8] != normalized[0]
+        && normalized[8] != normalized[1]
+        && normalized[8] != normalized[4]
+        && normalized[8] != normalized[5]
+        && normalized[9] != normalized[0]
+        && normalized[9] != normalized[1]
+        && normalized[9] != normalized[4]
+        && normalized[9] != normalized[5]
         && normalized[12] == normalized[13]
-        && normalized[12] != normalized[0] && normalized[12] != normalized[1]
-        && normalized[12] != normalized[4] && normalized[12] != normalized[5]
-        && normalized[12] != normalized[8] && normalized[12] != normalized[9]
+        && normalized[12] != normalized[0]
+        && normalized[12] != normalized[1]
+        && normalized[12] != normalized[4]
+        && normalized[12] != normalized[5]
+        && normalized[12] != normalized[8]
+        && normalized[12] != normalized[9]
     {
         return Some(RodzajSonetu::Barnifieldowski);
     }
 
-    let q1_abba = normalized[0] == normalized[3] && normalized[1] == normalized[2] && normalized[0] != normalized[1];
-    let q1_abab = normalized[0] == normalized[2] && normalized[1] == normalized[3] && normalized[0] != normalized[1];
-    let q2_abba = normalized[4] == normalized[7] && normalized[5] == normalized[6] && normalized[4] != normalized[5];
-    let q2_abab = normalized[4] == normalized[6] && normalized[5] == normalized[7] && normalized[4] != normalized[5];
+    let q1_abba = normalized[0] == normalized[3]
+        && normalized[1] == normalized[2]
+        && normalized[0] != normalized[1];
+    let q1_abab = normalized[0] == normalized[2]
+        && normalized[1] == normalized[3]
+        && normalized[0] != normalized[1];
+    let q2_abba = normalized[4] == normalized[7]
+        && normalized[5] == normalized[6]
+        && normalized[4] != normalized[5];
+    let q2_abab = normalized[4] == normalized[6]
+        && normalized[5] == normalized[7]
+        && normalized[4] != normalized[5];
 
     let ma_czterowiersze = (q1_abba || q1_abab) && (q2_abba || q2_abab);
 
@@ -239,7 +250,8 @@ pub fn analizuj_sonet(wersy: &[ZapisWersu]) -> Option<RodzajSonetu> {
 }
 
 pub fn analizuj_vilanelle(wersy: &[ZapisWersu]) -> Option<()> {
-    let non_empty: Vec<&ZapisWersu> = wersy.iter()
+    let non_empty: Vec<&ZapisWersu> = wersy
+        .iter()
         .filter(|z| !z.wers.oryginalne.is_empty())
         .collect();
 
@@ -312,7 +324,8 @@ pub fn analizuj_pantum(wersy: &[ZapisWersu]) -> Option<()> {
 }
 
 pub fn analizuj_triolet(wersy: &[ZapisWersu]) -> Option<()> {
-    let non_empty: Vec<&ZapisWersu> = wersy.iter()
+    let non_empty: Vec<&ZapisWersu> = wersy
+        .iter()
         .filter(|z| !z.wers.oryginalne.is_empty())
         .collect();
 
@@ -369,7 +382,8 @@ pub fn analizuj_triolet(wersy: &[ZapisWersu]) -> Option<()> {
 }
 
 pub fn analizuj_rondeau(wersy: &[ZapisWersu]) -> Option<RodzajRondeau> {
-    let non_empty: Vec<&ZapisWersu> = wersy.iter()
+    let non_empty: Vec<&ZapisWersu> = wersy
+        .iter()
         .filter(|z| !z.wers.oryginalne.is_empty())
         .collect();
 
@@ -408,7 +422,8 @@ pub fn analizuj_rondeau(wersy: &[ZapisWersu]) -> Option<RodzajRondeau> {
 }
 
 pub fn analizuj_limeryk(wersy: &[ZapisWersu]) -> Option<()> {
-    let non_empty: Vec<&ZapisWersu> = wersy.iter()
+    let non_empty: Vec<&ZapisWersu> = wersy
+        .iter()
         .filter(|z| !z.wers.oryginalne.is_empty())
         .collect();
 
@@ -434,7 +449,9 @@ pub fn analizuj_limeryk(wersy: &[ZapisWersu]) -> Option<()> {
     let (r34, _, _) = wers::czy_rymują(w3, w4);
     let (r13, _, _) = wers::czy_rymują(w1, w3);
 
-    if (!r12 && non_empty[0].kolor != non_empty[1].kolor) || (!r15 && non_empty[0].kolor != non_empty[4].kolor) {
+    if (!r12 && non_empty[0].kolor != non_empty[1].kolor)
+        || (!r15 && non_empty[0].kolor != non_empty[4].kolor)
+    {
         // Fallback to kolor check if phonetic rym returns false due to dictionary limitations
         if non_empty[0].kolor != non_empty[1].kolor || non_empty[0].kolor != non_empty[4].kolor {
             return None;
@@ -511,7 +528,10 @@ mod tests {
             wersy.push(make_zapis("Kot wlazł na płot", kol));
         }
         let gatunek = gatunek_literacki(&wersy);
-        assert_eq!(gatunek, Some(GatunekLiteracki::Rondeau(RodzajRondeau::Klasyczne10)));
+        assert_eq!(
+            gatunek,
+            Some(GatunekLiteracki::Rondeau(RodzajRondeau::Klasyczne10))
+        );
     }
 
     #[test]

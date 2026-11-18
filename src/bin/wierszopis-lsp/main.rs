@@ -4,7 +4,12 @@ use tokio::sync::Mutex;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
-use wierszopis::{analizator::{self, StanzaConfig}, fonetyka, indeks::IndeksCache, slownik};
+use wierszopis::{
+    analizator::{self, StanzaConfig},
+    fonetyka,
+    indeks::IndeksCache,
+    slownik,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LintTrigger {
@@ -49,9 +54,13 @@ impl Backend {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, params: InitializeParams) -> tower_lsp::jsonrpc::Result<InitializeResult> {
+    async fn initialize(
+        &self,
+        params: InitializeParams,
+    ) -> tower_lsp::jsonrpc::Result<InitializeResult> {
         if let Some(opts) = params.initialization_options {
-            if let Some(val) = opts.get("lintTrigger")
+            if let Some(val) = opts
+                .get("lintTrigger")
                 .or_else(|| opts.get("trigger"))
                 .or_else(|| opts.get("lint_trigger"))
                 .and_then(|v| v.as_str())
@@ -74,7 +83,12 @@ impl LanguageServer for Backend {
                 color_provider: Some(ColorProviderCapability::Simple(true)),
                 inlay_hint_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec![":".to_string(), " ".to_string(), "=".to_string(), ";".to_string()]),
+                    trigger_characters: Some(vec![
+                        ":".to_string(),
+                        " ".to_string(),
+                        "=".to_string(),
+                        ";".to_string(),
+                    ]),
                     ..Default::default()
                 }),
                 semantic_tokens_provider: Some(
@@ -82,13 +96,13 @@ impl LanguageServer for Backend {
                         SemanticTokensOptions {
                             legend: SemanticTokensLegend {
                                 token_types: vec![
-                                    SemanticTokenType::COMMENT, // 0: Comments & Signatures
-                                    SemanticTokenType::REGEXP,  // 1: Rhyme Group 1
-                                    SemanticTokenType::STRING,  // 2: Rhyme Group 2
-                                    SemanticTokenType::KEYWORD, // 3: Rhyme Group 3
-                                    SemanticTokenType::NUMBER,  // 4: Rhyme Group 4
-                                    SemanticTokenType::OPERATOR,// 5: Rhyme Group 5
-                                    SemanticTokenType::MACRO,   // 6: Accented syllables
+                                    SemanticTokenType::COMMENT,  // 0: Comments & Signatures
+                                    SemanticTokenType::REGEXP,   // 1: Rhyme Group 1
+                                    SemanticTokenType::STRING,   // 2: Rhyme Group 2
+                                    SemanticTokenType::KEYWORD,  // 3: Rhyme Group 3
+                                    SemanticTokenType::NUMBER,   // 4: Rhyme Group 4
+                                    SemanticTokenType::OPERATOR, // 5: Rhyme Group 5
+                                    SemanticTokenType::MACRO,    // 6: Accented syllables
                                 ],
                                 token_modifiers: vec![],
                             },
@@ -121,9 +135,15 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
-        if let Some(val) = params.settings.get("wierszopis")
+        if let Some(val) = params
+            .settings
+            .get("wierszopis")
             .or_else(|| params.settings.get("wierszopisLsp"))
-            .and_then(|s| s.get("lintTrigger").or_else(|| s.get("trigger")).or_else(|| s.get("lint_trigger")))
+            .and_then(|s| {
+                s.get("lintTrigger")
+                    .or_else(|| s.get("trigger"))
+                    .or_else(|| s.get("lint_trigger"))
+            })
             .and_then(|v| v.as_str())
         {
             let trigger = match val.to_lowercase().as_str() {
@@ -147,7 +167,8 @@ impl LanguageServer for Backend {
             let cfg = self.config.lock().await;
             cfg.trigger
         };
-        if trigger != LintTrigger::OnOpen || true { // always lint on open if requested or default
+        if trigger != LintTrigger::OnOpen || true {
+            // always lint on open if requested or default
             self.lint_and_publish_diagnostics(&uri, &text).await;
         }
     }
@@ -248,7 +269,11 @@ impl LanguageServer for Backend {
         }
 
         if content_until_cursor.to_lowercase().contains("wierszopis:") {
-            let colon_idx = content_until_cursor.to_lowercase().find("wierszopis:").unwrap() + "wierszopis:".len();
+            let colon_idx = content_until_cursor
+                .to_lowercase()
+                .find("wierszopis:")
+                .unwrap()
+                + "wierszopis:".len();
             let after_colon = &content_until_cursor[colon_idx..];
 
             let parts: Vec<&str> = after_colon.split(';').collect();
@@ -360,7 +385,8 @@ impl LanguageServer for Backend {
             if !matching_entries.is_empty() {
                 hover_content.push_str("\n\n---\n### Informacje ze słownika:");
                 for entry in matching_entries.iter().take(5) {
-                    let przetlumaczona_czesc = wierszopis::slownik::przetłumacz_część_mowy(&entry.czesc_mowy);
+                    let przetlumaczona_czesc =
+                        wierszopis::slownik::przetłumacz_część_mowy(&entry.czesc_mowy);
                     hover_content.push_str(&format!(
                         "\n- **Część mowy:** `{}`\n- **Forma podstawowa:** `{}`\n- **Cechy gramatyczne:** `{}`",
                         przetlumaczona_czesc,
@@ -389,23 +415,57 @@ impl LanguageServer for Backend {
         }))
     }
 
-    async fn document_color(&self, params: DocumentColorParams) -> tower_lsp::jsonrpc::Result<Vec<ColorInformation>> {
+    async fn document_color(
+        &self,
+        params: DocumentColorParams,
+    ) -> tower_lsp::jsonrpc::Result<Vec<ColorInformation>> {
         let uri = params.text_document.uri;
         let docs = self.documents.lock().await;
         let Some(text) = docs.get(&uri) else {
             return Ok(vec![]);
         };
 
-        let (group_map, _group_sizes, _wersy, _comments, _signatures) = analizator::analyze_document(text);
+        let (group_map, _group_sizes, _wersy, _comments, _signatures) =
+            analizator::analyze_document(text);
         let lines: Vec<&str> = text.lines().collect();
 
         let palette = [
-            Color { red: 1.0, green: 0.3, blue: 0.3, alpha: 1.0 },
-            Color { red: 0.3, green: 0.5, blue: 1.0, alpha: 1.0 },
-            Color { red: 0.2, green: 0.8, blue: 0.4, alpha: 1.0 },
-            Color { red: 1.0, green: 0.6, blue: 0.2, alpha: 1.0 },
-            Color { red: 0.7, green: 0.3, blue: 0.9, alpha: 1.0 },
-            Color { red: 0.2, green: 0.8, blue: 0.8, alpha: 1.0 },
+            Color {
+                red: 1.0,
+                green: 0.3,
+                blue: 0.3,
+                alpha: 1.0,
+            },
+            Color {
+                red: 0.3,
+                green: 0.5,
+                blue: 1.0,
+                alpha: 1.0,
+            },
+            Color {
+                red: 0.2,
+                green: 0.8,
+                blue: 0.4,
+                alpha: 1.0,
+            },
+            Color {
+                red: 1.0,
+                green: 0.6,
+                blue: 0.2,
+                alpha: 1.0,
+            },
+            Color {
+                red: 0.7,
+                green: 0.3,
+                blue: 0.9,
+                alpha: 1.0,
+            },
+            Color {
+                red: 0.2,
+                green: 0.8,
+                blue: 0.8,
+                alpha: 1.0,
+            },
         ];
 
         let mut color_infos = vec![];
@@ -440,14 +500,18 @@ impl LanguageServer for Backend {
         Ok(color_infos)
     }
 
-    async fn inlay_hint(&self, params: InlayHintParams) -> tower_lsp::jsonrpc::Result<Option<Vec<InlayHint>>> {
+    async fn inlay_hint(
+        &self,
+        params: InlayHintParams,
+    ) -> tower_lsp::jsonrpc::Result<Option<Vec<InlayHint>>> {
         let uri = params.text_document.uri;
         let docs = self.documents.lock().await;
         let Some(text) = docs.get(&uri) else {
             return Ok(None);
         };
 
-        let (_group_map, _group_sizes, wersy, _comments, _signatures) = analizator::analyze_document(text);
+        let (_group_map, _group_sizes, wersy, _comments, _signatures) =
+            analizator::analyze_document(text);
         let lines: Vec<&str> = text.lines().collect();
 
         let mut hints = vec![];
@@ -493,7 +557,8 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
 
-        let (_group_map, _group_sizes, wersy, comment_lines, signature_lines) = analizator::analyze_document(text);
+        let (_group_map, _group_sizes, wersy, comment_lines, signature_lines) =
+            analizator::analyze_document(text);
         let lines: Vec<&str> = text.lines().collect();
 
         let mut raw_tokens = vec![];

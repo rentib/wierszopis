@@ -1,7 +1,3 @@
-/// Moduł interaktywnego rymownika TUI z asynchronicznym wyszukiwaniem (jobs) i zerowym opóźnieniem inputu.
-use wierszopis::indeks::WpisSlownika;
-use wierszopis::slownik;
-use wierszopis::slowo;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -24,6 +20,10 @@ use std::sync::{
 };
 use std::thread;
 use std::time::{Duration, Instant};
+/// Moduł interaktywnego rymownika TUI z asynchronicznym wyszukiwaniem (jobs) i zerowym opóźnieniem inputu.
+use wierszopis::indeks::WpisSlownika;
+use wierszopis::slownik;
+use wierszopis::slowo;
 
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 

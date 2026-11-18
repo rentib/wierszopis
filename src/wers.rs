@@ -427,14 +427,183 @@ mod tests {
     #[test]
     fn test_nowe_zasady_średniówki() {
         // Test asymetrii 7+6 vs 6+7 i minimalnej liczby sylab w półwersie
-        let cands = kandydaci_średniówki(&nowy_wers("Litwo! Ojczyzno moja! ty jesteś jak zdrowie").słowa, 13);
+        let cands = kandydaci_średniówki(
+            &nowy_wers("Litwo! Ojczyzno moja! ty jesteś jak zdrowie").słowa,
+            13,
+        );
         // Znajdź 7+6 i 6+7 i sprawdź, czy 7+6 ma wyższy wynik
-        let score_7_6 = cands.iter().find(|(l, _)| l == "7+6").map(|&(_, s)| s).unwrap_or(0);
-        let score_6_7 = cands.iter().find(|(l, _)| l == "6+7").map(|&(_, s)| s).unwrap_or(0);
+        let score_7_6 = cands
+            .iter()
+            .find(|(l, _)| l == "7+6")
+            .map(|&(_, s)| s)
+            .unwrap_or(0);
+        let score_6_7 = cands
+            .iter()
+            .find(|(l, _)| l == "6+7")
+            .map(|&(_, s)| s)
+            .unwrap_or(0);
         assert!(score_7_6 > score_6_7);
     }
 }
 
 fn czy_głoska_samogłoska(głoska: &str) -> bool {
     rym::czy_samogloska(głoska)
+}
+
+impl Wers {
+    pub fn is_lekka_modyfikacja(&self, other: &Wers) -> bool {
+        is_lekka_modyfikacja_wersu(self, other)
+    }
+
+    pub fn wyznacz_podswietlone_czesci_meth(&self) -> Vec<(String, bool)> {
+        wyznacz_podswietlone_czesci(self)
+    }
+
+    pub fn get_accented_spans(&self, line: &str) -> Vec<(u32, u32)> {
+        get_accented_spans_for_line(line, self)
+    }
+}
+
+pub fn usun_podpis(wersy: &mut Vec<Wers>) {
+    while let Some(w) = wersy.last() {
+        if w.oryginalne.is_empty() {
+            wersy.pop();
+        } else {
+            break;
+        }
+    }
+
+    if wersy.is_empty() {
+        return;
+    }
+
+    let mut idx = wersy.len() - 1;
+    let mut stanza_start = idx;
+    let mut stanza_len = 0;
+
+    while idx < wersy.len() {
+        if wersy[idx].oryginalne.is_empty() {
+            break;
+        }
+        stanza_start = idx;
+        stanza_len += 1;
+        if idx == 0 {
+            break;
+        }
+        idx -= 1;
+    }
+
+    if stanza_len == 1 {
+        let text = wersy[stanza_start].surowy_tekst.trim_start();
+        if text.starts_with("--") {
+            wersy.truncate(stanza_start);
+            while let Some(w) = wersy.last() {
+                if w.oryginalne.is_empty() {
+                    wersy.pop();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+pub fn is_lekka_modyfikacja_wersu(w1: &Wers, w2: &Wers) -> bool {
+    if w1.liczba_sylab != w2.liczba_sylab {
+        return false;
+    }
+    if w1.akcent_wersu != w2.akcent_wersu {
+        return false;
+    }
+    let w1_last = w1.słowa.last().map(|s| s.oryginalne.to_lowercase());
+    let w2_last = w2.słowa.last().map(|s| s.oryginalne.to_lowercase());
+    if w1_last != w2_last {
+        return false;
+    }
+
+    let words1: Vec<String> = w1
+        .słowa
+        .iter()
+        .map(|s| s.oryginalne.to_lowercase())
+        .collect();
+    let words2: Vec<String> = w2
+        .słowa
+        .iter()
+        .map(|s| s.oryginalne.to_lowercase())
+        .collect();
+    let n = words1.len();
+    if n == 0 {
+        return w1.oryginalne.trim().to_lowercase() == w2.oryginalne.trim().to_lowercase();
+    }
+
+    let max_len = std::cmp::max(words1.len(), words2.len());
+    let min_len = std::cmp::min(words1.len(), words2.len());
+    let mut diff_count = max_len - min_len;
+    for i in 0..min_len {
+        if words1[i] != words2[i] {
+            diff_count += 1;
+        }
+    }
+    let allowed_diff = ((n as f64) / 5.0).ceil() as usize;
+    diff_count <= allowed_diff
+}
+
+pub fn get_accented_spans_for_line(line: &str, wers_obj: &Wers) -> Vec<(u32, u32)> {
+    let text = &wers_obj.surowy_tekst;
+    let mut accented_chars = Vec::new();
+    if text.is_empty() {
+        return accented_chars;
+    }
+
+    let line_offset = if let Some(pos) = line.find(text) {
+        pos
+    } else {
+        0
+    };
+
+    let mut search_start = 0;
+    let mut global_syl_idx = 0;
+    for sw in &wers_obj.słowa {
+        if let Some(word_rel_pos) = text[search_start..].find(&sw.oryginalne) {
+            let word_start = search_start + word_rel_pos;
+            let spans = sw.sylaba_spans();
+            for (_i, &(s_start, s_end)) in spans.iter().enumerate() {
+                let akcent_char = wers_obj
+                    .akcent_wersu
+                    .chars()
+                    .nth(global_syl_idx)
+                    .unwrap_or('s');
+                global_syl_idx += 1;
+
+                let is_accented = akcent_char == 'S';
+                if is_accented {
+                    let abs_start = word_start + s_start.min(sw.oryginalne.len());
+                    let abs_end = word_start + s_end.min(sw.oryginalne.len());
+                    if abs_start < abs_end && abs_end <= text.len() {
+                        let line_byte_start = line_offset + abs_start;
+                        let line_byte_end = line_offset + abs_end;
+
+                        let mut b_start = line_byte_start.min(line.len());
+                        while b_start > 0 && !line.is_char_boundary(b_start) {
+                            b_start -= 1;
+                        }
+                        let mut b_end = line_byte_end.min(line.len());
+                        while b_end < line.len() && !line.is_char_boundary(b_end) {
+                            b_end += 1;
+                        }
+
+                        if b_start < b_end {
+                            let char_start = line[..b_start].chars().count() as u32;
+                            let char_end = line[..b_end].chars().count() as u32;
+                            if char_start < char_end {
+                                accented_chars.push((char_start, char_end));
+                            }
+                        }
+                    }
+                }
+            }
+            search_start = word_start + sw.oryginalne.len();
+        }
+    }
+    accented_chars
 }

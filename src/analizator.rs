@@ -29,83 +29,9 @@ pub struct AnalizaWiersza {
     pub wersy: Vec<ZapisWersu>,
 }
 
-pub use crate::gatunki::{GatunekLiteracki, RodzajSonetu, RodzajRondeau};
+pub use crate::gatunki::{GatunekLiteracki, RodzajRondeau, RodzajSonetu};
 
-pub fn usun_podpis(wersy: &mut Vec<Wers>) {
-    while let Some(w) = wersy.last() {
-        if w.oryginalne.is_empty() {
-            wersy.pop();
-        } else {
-            break;
-        }
-    }
-
-    if wersy.is_empty() {
-        return;
-    }
-
-    let mut idx = wersy.len() - 1;
-    let mut stanza_start = idx;
-    let mut stanza_len = 0;
-
-    while idx < wersy.len() {
-        if wersy[idx].oryginalne.is_empty() {
-            break;
-        }
-        stanza_start = idx;
-        stanza_len += 1;
-        if idx == 0 {
-            break;
-        }
-        idx -= 1;
-    }
-
-    if stanza_len == 1 {
-        let text = wersy[stanza_start].surowy_tekst.trim_start();
-        if text.starts_with("--") {
-            wersy.truncate(stanza_start);
-            while let Some(w) = wersy.last() {
-                if w.oryginalne.is_empty() {
-                    wersy.pop();
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-}
-
-pub fn is_lekka_modyfikacja_wersu(w1: &Wers, w2: &Wers) -> bool {
-    if w1.liczba_sylab != w2.liczba_sylab {
-        return false;
-    }
-    if w1.akcent_wersu != w2.akcent_wersu {
-        return false;
-    }
-    let w1_last = w1.słowa.last().map(|s| s.oryginalne.to_lowercase());
-    let w2_last = w2.słowa.last().map(|s| s.oryginalne.to_lowercase());
-    if w1_last != w2_last {
-        return false;
-    }
-
-    let words1: Vec<String> = w1.słowa.iter().map(|s| s.oryginalne.to_lowercase()).collect();
-    let words2: Vec<String> = w2.słowa.iter().map(|s| s.oryginalne.to_lowercase()).collect();
-    let n = words1.len();
-    if n == 0 {
-        return w1.oryginalne.trim().to_lowercase() == w2.oryginalne.trim().to_lowercase();
-    }
-
-    let max_len = std::cmp::max(words1.len(), words2.len());
-    let min_len = std::cmp::min(words1.len(), words2.len());
-    let mut diff_count = max_len - min_len;
-    for i in 0..min_len {
-        if words1[i] != words2[i] {
-            diff_count += 1;
-        }
-    }
-    let allowed_diff = ((n as f64) / 5.0).ceil() as usize;
-    diff_count <= allowed_diff
-}
+pub use wers::{is_lekka_modyfikacja_wersu, usun_podpis};
 
 impl AnalizaWiersza {
     pub fn nowy(mut wersy_bazowe: Vec<Wers>) -> Self {
@@ -224,7 +150,7 @@ impl AnalizaWiersza {
 
             let (best_j, min_koszt, best_max) = match (best_j_w, best_j_spoza) {
                 (Some(jw), Some(js)) => {
-                    // jedyna sytuacja, gdzie rym spoza strofy powinien być wybierany zamiast rymu ze strofy 
+                    // jedyna sytuacja, gdzie rym spoza strofy powinien być wybierany zamiast rymu ze strofy
                     // jest taka, że ten spoza jest dokładny (koszt == 0), a ten w jest niedokładny (koszt > 0)
                     if min_koszt_spoza == 0 && min_koszt_w > 0 {
                         (Some(js), min_koszt_spoza, best_max_spoza)
@@ -294,13 +220,16 @@ impl AnalizaWiersza {
             poem_candidates.push(cands);
         }
 
-        let mut current_best: Vec<String> = poem_candidates.iter().map(|cands| {
-            if let Some((best_label, _)) = cands.iter().max_by_key(|&(_, score)| score) {
-                best_label.clone()
-            } else {
-                "-".to_string()
-            }
-        }).collect();
+        let mut current_best: Vec<String> = poem_candidates
+            .iter()
+            .map(|cands| {
+                if let Some((best_label, _)) = cands.iter().max_by_key(|&(_, score)| score) {
+                    best_label.clone()
+                } else {
+                    "-".to_string()
+                }
+            })
+            .collect();
 
         for _iter in 0..2 {
             let mut next_best = current_best.clone();
@@ -315,12 +244,16 @@ impl AnalizaWiersza {
                     let mut total_score = *base_score;
 
                     for n_offset in -2..=2 {
-                        if n_offset == 0 { continue; }
+                        if n_offset == 0 {
+                            continue;
+                        }
                         let n_idx = idx as i32 + n_offset;
                         if n_idx >= 0 && (n_idx as usize) < current_best.len() {
                             let n_real_idx = non_empty_indices[n_idx as usize];
                             let current_real_idx = non_empty_indices[idx];
-                            if self.wersy[n_real_idx].wers.liczba_sylab == self.wersy[current_real_idx].wers.liczba_sylab {
+                            if self.wersy[n_real_idx].wers.liczba_sylab
+                                == self.wersy[current_real_idx].wers.liczba_sylab
+                            {
                                 let neighbor_label = &current_best[n_idx as usize];
                                 if neighbor_label != "-" {
                                     let distance = n_offset.abs();
@@ -356,7 +289,10 @@ impl AnalizaWiersza {
     }
 
     #[cfg(feature = "tui")]
-    pub fn wyznacz_kolory(&self, k_dist: usize) -> (std::collections::HashMap<usize, (usize, usize)>, Vec<usize>) {
+    pub fn wyznacz_kolory(
+        &self,
+        k_dist: usize,
+    ) -> (std::collections::HashMap<usize, (usize, usize)>, Vec<usize>) {
         let mut groups_in_order = Vec::new();
         let mut seen_groups = std::collections::HashSet::new();
         for z in &self.wersy {
@@ -709,23 +645,29 @@ mod tests {
     #[test]
     fn test_rozpoznawanie_sonetow() {
         let make_analiza = |kolory: Vec<usize>| {
-            let wersy = kolory.into_iter().map(|k| {
-                let w = wers::nowy_wers("test");
-                ZapisWersu {
-                    linenr: 1,
-                    kolor: k,
-                    koszt: 0,
-                    max: 0,
-                    wers: w,
-                    ma_rym: true,
-                }
-            }).collect();
+            let wersy = kolory
+                .into_iter()
+                .map(|k| {
+                    let w = wers::nowy_wers("test");
+                    ZapisWersu {
+                        linenr: 1,
+                        kolor: k,
+                        koszt: 0,
+                        max: 0,
+                        wers: w,
+                        ma_rym: true,
+                    }
+                })
+                .collect();
             AnalizaWiersza { wersy }
         };
 
         // 1. Szekspirowski: abab cdcd efef gg
         let a_szekspir = make_analiza(vec![1, 2, 1, 2, 3, 4, 3, 4, 5, 6, 5, 6, 7, 7]);
-        assert_eq!(a_szekspir.analizuj_sonet(), Some(RodzajSonetu::Szekspirowski));
+        assert_eq!(
+            a_szekspir.analizuj_sonet(),
+            Some(RodzajSonetu::Szekspirowski)
+        );
 
         // 2. Spenserowski: abab bcbc cdcd ee
         let a_spenser = make_analiza(vec![1, 2, 1, 2, 2, 3, 2, 3, 3, 4, 3, 4, 5, 5]);
@@ -733,15 +675,24 @@ mod tests {
 
         // 3. Barnifieldowski: abba cddc effe gg
         let a_barnifield = make_analiza(vec![1, 2, 2, 1, 3, 4, 4, 3, 5, 6, 6, 5, 7, 7]);
-        assert_eq!(a_barnifield.analizuj_sonet(), Some(RodzajSonetu::Barnifieldowski));
+        assert_eq!(
+            a_barnifield.analizuj_sonet(),
+            Some(RodzajSonetu::Barnifieldowski)
+        );
 
         // 4. Włoski (Petrarkowski): abba abba cdc dcd
         let a_włoski = make_analiza(vec![1, 2, 2, 1, 1, 2, 2, 1, 3, 4, 3, 4, 3, 4]);
-        assert_eq!(a_włoski.analizuj_sonet(), Some(RodzajSonetu::WłoskiPetrarkowski));
+        assert_eq!(
+            a_włoski.analizuj_sonet(),
+            Some(RodzajSonetu::WłoskiPetrarkowski)
+        );
 
         // 5. Francuski (Marotyczny): abba abba cc dede
         let a_francuski = make_analiza(vec![1, 2, 2, 1, 1, 2, 2, 1, 3, 3, 4, 5, 4, 5]);
-        assert_eq!(a_francuski.analizuj_sonet(), Some(RodzajSonetu::FrancuskiMarotyczny));
+        assert_eq!(
+            a_francuski.analizuj_sonet(),
+            Some(RodzajSonetu::FrancuskiMarotyczny)
+        );
     }
 
     #[test]
@@ -782,7 +733,10 @@ mod tests {
         wersy.push(wers::nowy_wers(r2));
 
         let analiza = AnalizaWiersza::nowy(wersy);
-        assert_eq!(analiza.gatunek_literacki(), Some(GatunekLiteracki::Vilanella));
+        assert_eq!(
+            analiza.gatunek_literacki(),
+            Some(GatunekLiteracki::Vilanella)
+        );
     }
 
     #[test]
@@ -823,7 +777,10 @@ mod tests {
         wersy.push(wers::nowy_wers(r2));
 
         let analiza = AnalizaWiersza::nowy(wersy);
-        assert_eq!(analiza.gatunek_literacki(), Some(GatunekLiteracki::Vilanella));
+        assert_eq!(
+            analiza.gatunek_literacki(),
+            Some(GatunekLiteracki::Vilanella)
+        );
     }
 
     #[test]
@@ -840,7 +797,10 @@ mod tests {
         wersy_pantum.push(wers::nowy_wers("D"));
         wersy_pantum.push(wers::nowy_wers("Y"));
         let analiza_pantum = AnalizaWiersza::nowy(wersy_pantum);
-        assert_eq!(analiza_pantum.gatunek_literacki(), Some(GatunekLiteracki::Pantum));
+        assert_eq!(
+            analiza_pantum.gatunek_literacki(),
+            Some(GatunekLiteracki::Pantum)
+        );
     }
 
     #[test]
@@ -988,7 +948,7 @@ pub fn parse_directive(line: &str) -> Option<Result<StanzaConfig, String>> {
 
         if key == "sylaby" {
             let val_clean = if val.starts_with('[') && val.ends_with(']') {
-                val[1..val.len()-1].trim()
+                val[1..val.len() - 1].trim()
             } else {
                 val.trim()
             };
@@ -998,17 +958,27 @@ pub fn parse_directive(line: &str) -> Option<Result<StanzaConfig, String>> {
 
             for item in val_clean.split(',') {
                 let item = item.trim();
-                if item.is_empty() { continue; }
+                if item.is_empty() {
+                    continue;
+                }
 
                 if item.contains('+') {
                     let parts: Vec<&str> = item.split('+').collect();
                     if parts.len() == 2 {
-                        match (parts[0].trim().parse::<usize>(), parts[1].trim().parse::<usize>()) {
+                        match (
+                            parts[0].trim().parse::<usize>(),
+                            parts[1].trim().parse::<usize>(),
+                        ) {
                             (Ok(p1), Ok(p2)) => {
                                 syl_pattern.push(p1 + p2);
                                 sred_pattern.push(item.to_string());
                             }
-                            _ => return Some(Err(format!("Niepoprawne wartości średniówki: '{}'", item))),
+                            _ => {
+                                return Some(Err(format!(
+                                    "Niepoprawne wartości średniówki: '{}'",
+                                    item
+                                )));
+                            }
                         }
                     } else {
                         return Some(Err(format!("Niepoprawny format średniówki: '{}'", item)));
@@ -1019,7 +989,9 @@ pub fn parse_directive(line: &str) -> Option<Result<StanzaConfig, String>> {
                             syl_pattern.push(n);
                             sred_pattern.push("-".to_string());
                         }
-                        Err(_) => return Some(Err(format!("Niepoprawna liczba sylab: '{}'", item))),
+                        Err(_) => {
+                            return Some(Err(format!("Niepoprawna liczba sylab: '{}'", item)));
+                        }
                     }
                 }
             }
@@ -1032,7 +1004,7 @@ pub fn parse_directive(line: &str) -> Option<Result<StanzaConfig, String>> {
             }
         } else if key == "rymy" {
             let val_clean = if val.starts_with('[') && val.ends_with(']') {
-                val[1..val.len()-1].trim()
+                val[1..val.len() - 1].trim()
             } else {
                 val.trim()
             };
@@ -1047,7 +1019,12 @@ pub fn parse_directive(line: &str) -> Option<Result<StanzaConfig, String>> {
             match val_lower.as_str() {
                 "tak" => config.akcenty_enabled = true,
                 "nie" => config.akcenty_enabled = false,
-                _ => return Some(Err(format!("Niepoprawna wartość dla opcji akcenty (oczekiwano tak/nie): '{}'", val))),
+                _ => {
+                    return Some(Err(format!(
+                        "Niepoprawna wartość dla opcji akcenty (oczekiwano tak/nie): '{}'",
+                        val
+                    )));
+                }
             }
         } else {
             return Some(Err(format!("Nieznany parametr dyrektywy: '{}'", key)));
@@ -1160,64 +1137,16 @@ pub fn analyze_document(
         }
     }
 
-    (group_map, group_sizes, wersy, comment_lines, signature_lines)
+    (
+        group_map,
+        group_sizes,
+        wersy,
+        comment_lines,
+        signature_lines,
+    )
 }
 
-pub fn get_accented_spans_for_line(line: &str, wers_obj: &Wers) -> Vec<(u32, u32)> {
-    let text = &wers_obj.surowy_tekst;
-    let mut accented_chars = Vec::new();
-    if text.is_empty() {
-        return accented_chars;
-    }
-
-    let line_offset = if let Some(pos) = line.find(text) {
-        pos
-    } else {
-        0
-    };
-
-    let mut search_start = 0;
-    let mut global_syl_idx = 0;
-    for sw in &wers_obj.słowa {
-        if let Some(word_rel_pos) = text[search_start..].find(&sw.oryginalne) {
-            let word_start = search_start + word_rel_pos;
-            let spans = sw.sylaba_spans();
-            for (_i, &(s_start, s_end)) in spans.iter().enumerate() {
-                let akcent_char = wers_obj.akcent_wersu.chars().nth(global_syl_idx).unwrap_or('s');
-                global_syl_idx += 1;
-
-                let is_accented = akcent_char == 'S';
-                if is_accented {
-                    let abs_start = word_start + s_start.min(sw.oryginalne.len());
-                    let abs_end = word_start + s_end.min(sw.oryginalne.len());
-                    if abs_start < abs_end && abs_end <= text.len() {
-                        let line_byte_start = line_offset + abs_start;
-                        let line_byte_end = line_offset + abs_end;
-
-                        let mut b_start = line_byte_start.min(line.len());
-                        while b_start > 0 && !line.is_char_boundary(b_start) {
-                            b_start -= 1;
-                        }
-                        let mut b_end = line_byte_end.min(line.len());
-                        while b_end < line.len() && !line.is_char_boundary(b_end) {
-                            b_end += 1;
-                        }
-
-                        if b_start < b_end {
-                            let char_start = line[..b_start].chars().count() as u32;
-                            let char_end = line[..b_end].chars().count() as u32;
-                            if char_start < char_end {
-                                accented_chars.push((char_start, char_end));
-                            }
-                        }
-                    }
-                }
-            }
-            search_start = word_start + sw.oryginalne.len();
-        }
-    }
-    accented_chars
-}
+pub use wers::get_accented_spans_for_line;
 
 #[cfg(feature = "lsp")]
 pub fn compute_diagnostics(text: &str) -> Vec<tower_lsp::lsp_types::Diagnostic> {
@@ -1239,11 +1168,21 @@ pub fn compute_diagnostics(text: &str) -> Vec<tower_lsp::lsp_types::Diagnostic> 
                 Some(Err(err_msg)) => {
                     let chars: Vec<char> = line.chars().collect();
                     let start = chars.iter().position(|c| !c.is_whitespace()).unwrap_or(0);
-                    let end = chars.iter().rposition(|c| !c.is_whitespace()).map(|i| i + 1).unwrap_or(chars.len());
+                    let end = chars
+                        .iter()
+                        .rposition(|c| !c.is_whitespace())
+                        .map(|i| i + 1)
+                        .unwrap_or(chars.len());
                     diagnostics.push(Diagnostic {
                         range: Range {
-                            start: Position { line: line_idx as u32, character: start as u32 },
-                            end: Position { line: line_idx as u32, character: end as u32 },
+                            start: Position {
+                                line: line_idx as u32,
+                                character: start as u32,
+                            },
+                            end: Position {
+                                line: line_idx as u32,
+                                character: end as u32,
+                            },
                         },
                         severity: Some(DiagnosticSeverity::WARNING),
                         code: Some(NumberOrString::String("directive-error".to_string())),
@@ -1271,7 +1210,11 @@ pub fn compute_diagnostics(text: &str) -> Vec<tower_lsp::lsp_types::Diagnostic> 
 
         let chars: Vec<char> = line.chars().collect();
         let start = chars.iter().position(|c| !c.is_whitespace()).unwrap_or(0);
-        let end = chars.iter().rposition(|c| !c.is_whitespace()).map(|i| i + 1).unwrap_or(chars.len());
+        let end = chars
+            .iter()
+            .rposition(|c| !c.is_whitespace())
+            .map(|i| i + 1)
+            .unwrap_or(chars.len());
 
         if let Some(ref pattern) = current_config.sylaby_pattern {
             let expected = pattern[verse_in_block_idx % pattern.len()];
@@ -1279,8 +1222,14 @@ pub fn compute_diagnostics(text: &str) -> Vec<tower_lsp::lsp_types::Diagnostic> 
             if actual != expected {
                 diagnostics.push(Diagnostic {
                     range: Range {
-                        start: Position { line: line_idx as u32, character: start as u32 },
-                        end: Position { line: line_idx as u32, character: end as u32 },
+                        start: Position {
+                            line: line_idx as u32,
+                            character: start as u32,
+                        },
+                        end: Position {
+                            line: line_idx as u32,
+                            character: end as u32,
+                        },
                     },
                     severity: Some(DiagnosticSeverity::WARNING),
                     code: Some(NumberOrString::String("sylaby-mismatch".to_string())),
@@ -1292,17 +1241,27 @@ pub fn compute_diagnostics(text: &str) -> Vec<tower_lsp::lsp_types::Diagnostic> 
         }
 
         if let Some(ref expected_sred_pattern) = current_config.expected_sredniowka_pattern {
-            let expected_sred = &expected_sred_pattern[verse_in_block_idx % expected_sred_pattern.len()];
+            let expected_sred =
+                &expected_sred_pattern[verse_in_block_idx % expected_sred_pattern.len()];
             if expected_sred != "-" && w.średniówka != *expected_sred {
                 diagnostics.push(Diagnostic {
                     range: Range {
-                        start: Position { line: line_idx as u32, character: start as u32 },
-                        end: Position { line: line_idx as u32, character: end as u32 },
+                        start: Position {
+                            line: line_idx as u32,
+                            character: start as u32,
+                        },
+                        end: Position {
+                            line: line_idx as u32,
+                            character: end as u32,
+                        },
                     },
                     severity: Some(DiagnosticSeverity::WARNING),
                     code: Some(NumberOrString::String("średniówka-mismatch".to_string())),
                     source: Some("wierszopis-lsp".to_string()),
-                    message: format!("Oczekiwano średniówki '{}', wykryto '{}'.", expected_sred, w.średniówka),
+                    message: format!(
+                        "Oczekiwano średniówki '{}', wykryto '{}'.",
+                        expected_sred, w.średniówka
+                    ),
                     ..Default::default()
                 });
             }
@@ -1356,7 +1315,11 @@ pub fn compute_diagnostics(text: &str) -> Vec<tower_lsp::lsp_types::Diagnostic> 
                         let line = lines[line_a];
                         let chars: Vec<char> = line.chars().collect();
                         let start = chars.iter().position(|c| !c.is_whitespace()).unwrap_or(0);
-                        let end = chars.iter().rposition(|c| !c.is_whitespace()).map(|i| i + 1).unwrap_or(chars.len());
+                        let end = chars
+                            .iter()
+                            .rposition(|c| !c.is_whitespace())
+                            .map(|i| i + 1)
+                            .unwrap_or(chars.len());
 
                         if char_a == char_b {
                             if !rymuja {

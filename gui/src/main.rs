@@ -55,7 +55,7 @@ fn App() -> Element {
     rsx! {
         div {
             style: "max-width: 1000px; width: 95%; margin: 40px auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; color: #333;",
-            
+
             h1 { style: "font-size: 2.2rem; margin-bottom: 8px; color: #1a202c;", "Wierszopis - Analiza Wersu i Rymów" }
             p { style: "color: #666; margin-bottom: 24px; font-size: 1.05rem;", "Wpisz lub wklej wiersz poniżej, aby przeanalizować sylaby, akcenty i rymy." }
 
