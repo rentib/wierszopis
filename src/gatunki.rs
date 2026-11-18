@@ -553,6 +553,113 @@ pub fn wyznacz_okres_sylab(sylaby: &[usize]) -> Option<Vec<usize>> {
     None
 }
 
+fn detect_stanza_period(stanzas: &[Vec<&ZapisWersu>], kolor_counts: &std::collections::HashMap<usize, usize>) -> usize {
+    let m = stanzas.len();
+    if m <= 1 {
+        return m;
+    }
+
+    let line_class = |z: &ZapisWersu| -> Option<usize> {
+        if z.kolor == 0 {
+            None
+        } else {
+            let count = kolor_counts.get(&z.kolor).copied().unwrap_or(0);
+            if count < 2 { None } else { Some(z.kolor) }
+        }
+    };
+
+    for p in 1..=m / 2 {
+        if m % p != 0 {
+            continue;
+        }
+
+        // Check that stanzas at distance p have disjoint color sets (not sharing rhymes across blocks)
+        let mut disjoint_colors = true;
+        for s in 0..m {
+            let colors_s: std::collections::HashSet<usize> = stanzas[s].iter()
+                .filter_map(|z| if z.kolor != 0 { Some(z.kolor) } else { None })
+                .collect();
+            let mut k = 1;
+            while s + k * p < m {
+                let colors_other: std::collections::HashSet<usize> = stanzas[s + k * p].iter()
+                    .filter_map(|z| if z.kolor != 0 { Some(z.kolor) } else { None })
+                    .collect();
+                if colors_s.intersection(&colors_other).next().is_some() {
+                    disjoint_colors = false;
+                    break;
+                }
+                k += 1;
+            }
+            if !disjoint_colors {
+                break;
+            }
+        }
+        if !disjoint_colors {
+            continue;
+        }
+
+        let mut is_periodic = true;
+        for s in 0..(m - p) {
+            let s_a = &stanzas[s];
+            let s_b = &stanzas[s + p];
+            if s_a.len() != s_b.len() {
+                is_periodic = false;
+                break;
+            }
+            let mut matched = true;
+            for i in 0..s_a.len() {
+                for j in 0..s_a.len() {
+                    let eq_a = line_class(s_a[i]) == line_class(s_a[j]) && line_class(s_a[i]).is_some();
+                    let eq_b = line_class(s_b[i]) == line_class(s_b[j]) && line_class(s_b[i]).is_some();
+                    if eq_a != eq_b {
+                        matched = false;
+                        break;
+                    }
+                }
+                if !matched {
+                    break;
+                }
+            }
+            if !matched {
+                is_periodic = false;
+                break;
+            }
+        }
+        if is_periodic {
+            return p;
+        }
+    }
+    m
+}
+
+fn wyznacz_okres_schematu(parts: &[String]) -> Vec<String> {
+    let n = parts.len();
+    if n <= 1 {
+        return parts.to_vec();
+    }
+
+    let mut pi = vec![0; n];
+    let mut j = 0;
+    for i in 1..n {
+        while j > 0 && parts[i] != parts[j] {
+            j = pi[j - 1];
+        }
+        if parts[i] == parts[j] {
+            j += 1;
+        }
+        pi[i] = j;
+    }
+
+    for l in 1..=n {
+        if n % l == 0 {
+            if pi[n - 1] >= n - l {
+                return parts[..l].to_vec();
+            }
+        }
+    }
+    parts.to_vec()
+}
+
 /// Wyznacza schemat rymów z filtrowaniem rymów przypadkowych (szumu występującego tylko raz)
 /// oraz obsługą rymów międzyzwrotkowych w ujęciu globalnym (ze spacjami między zwrotkami).
 pub fn schemat_rymow_filtrowany(wersy: &[ZapisWersu]) -> (String, Vec<usize>) {
@@ -567,48 +674,49 @@ pub fn schemat_rymow_filtrowany(wersy: &[ZapisWersu]) -> (String, Vec<usize>) {
         }
     }
 
-    let mut schemat_parts = Vec::new();
-    let mut current_strofa_schemat = String::new();
-    let mut mapowanie_kolorów: std::collections::HashMap<usize, char> =
-        std::collections::HashMap::new();
+    let stanzas = get_stanzas(wersy);
+    let p = detect_stanza_period(&stanzas, &kolor_counts);
+
+    let mut schemat_parts: Vec<String> = Vec::new();
+    let mut mapowanie_kolorów: std::collections::HashMap<usize, char> = std::collections::HashMap::new();
+    let mut stanza_letters: Vec<Vec<char>> = Vec::new();
     let mut następna_litera = b'a';
     let mut numery_grup = Vec::new();
-    let mut has_lines_in_strofa = false;
 
-    for z in wersy {
-        if z.wers.oryginalne.is_empty() {
-            if has_lines_in_strofa {
-                schemat_parts.push(current_strofa_schemat);
-                current_strofa_schemat = String::new();
-                has_lines_in_strofa = false;
-            }
-            continue;
-        }
-        has_lines_in_strofa = true;
-        numery_grup.push(z.kolor);
-        if z.kolor == 0 {
-            current_strofa_schemat.push('-');
-        } else {
-            let count = kolor_counts.get(&z.kolor).copied().unwrap_or(0);
-            if count < 2 {
-                current_strofa_schemat.push('-');
+    for (s_idx, stanza) in stanzas.iter().enumerate() {
+        let mut strofa_chars = Vec::new();
+        let target_s = s_idx % p;
+
+        for (line_idx, z) in stanza.iter().enumerate() {
+            numery_grup.push(z.kolor);
+            if z.kolor == 0 {
+                strofa_chars.push('-');
             } else {
-                let litera = *mapowanie_kolorów.entry(z.kolor).or_insert_with(|| {
-                    let l = następna_litera as char;
-                    if następna_litera < b'z' {
-                        następna_litera += 1;
-                    }
-                    l
-                });
-                current_strofa_schemat.push(litera);
+                let count = kolor_counts.get(&z.kolor).copied().unwrap_or(0);
+                if count < 2 {
+                    strofa_chars.push('-');
+                } else if s_idx >= p && target_s < stanza_letters.len() && line_idx < stanza_letters[target_s].len() {
+                    strofa_chars.push(stanza_letters[target_s][line_idx]);
+                } else {
+                    let litera = *mapowanie_kolorów.entry(z.kolor).or_insert_with(|| {
+                        let l = następna_litera as char;
+                        if następna_litera < b'z' {
+                            następna_litera += 1;
+                        }
+                        l
+                    });
+                    strofa_chars.push(litera);
+                }
             }
         }
-    }
-    if has_lines_in_strofa {
-        schemat_parts.push(current_strofa_schemat);
+        if s_idx < p {
+            stanza_letters.push(strofa_chars.clone());
+        }
+        schemat_parts.push(strofa_chars.into_iter().collect());
     }
 
-    let schemat = schemat_parts.join(" ");
+    let schemat_okres = wyznacz_okres_schematu(&schemat_parts);
+    let schemat = schemat_okres.join(" ");
     (schemat, numery_grup)
 }
 
@@ -688,6 +796,29 @@ mod tests {
             make_zapis("4", 3),
             make_zapis("5", 3),
             make_zapis("6", 2), // rym 'b' z poprzedniej zwrotki (wspólny)
+        ];
+        let (schemat, _) = schemat_rymow_filtrowany(&wersy);
+        assert_eq!(schemat, "aab ccb");
+    }
+
+    #[test]
+    fn test_schemat_rymow_okresowy_izomorfizm() {
+        let wersy = vec![
+            make_zapis("1", 1),
+            make_zapis("2", 1),
+            make_zapis("3", 2),
+            make_zapis("", 0),
+            make_zapis("4", 3),
+            make_zapis("5", 3),
+            make_zapis("6", 2),
+            make_zapis("", 0),
+            make_zapis("7", 10),
+            make_zapis("8", 10),
+            make_zapis("9", 20),
+            make_zapis("", 0),
+            make_zapis("10", 30),
+            make_zapis("11", 30),
+            make_zapis("12", 20),
         ];
         let (schemat, _) = schemat_rymow_filtrowany(&wersy);
         assert_eq!(schemat, "aab ccb");
