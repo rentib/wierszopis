@@ -474,6 +474,20 @@ impl AnalizaWiersza {
             };
             println!("{} {}{}{}", etykieta, rendered_text, padding, akcent_suffix);
         }
+
+        if szczegoly {
+            let (schemat_globalny, _) = crate::gatunki::schemat_rymow_filtrowany(&self.wersy);
+            println!("\nSchemat rymów: {}", schemat_globalny);
+
+            let sylaby: Vec<usize> = self.wersy.iter()
+                .filter(|z| !z.wers.oryginalne.is_empty())
+                .map(|z| z.wers.liczba_sylab)
+                .collect();
+            if let Some(okres) = crate::gatunki::wyznacz_okres_sylab(&sylaby) {
+                let okres_str = okres.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ");
+                println!("Wzorzec sylab (okres): [{}]", okres_str);
+            }
+        }
     }
 }
 

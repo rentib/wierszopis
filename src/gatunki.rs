@@ -61,19 +61,27 @@ impl GatunekLiteracki {
 pub use wers::is_lekka_modyfikacja_wersu;
 
 pub fn schemat_rymów(wersy: &[ZapisWersu]) -> (String, Vec<usize>) {
-    let mut schemat = String::new();
+    let mut schemat_parts = Vec::new();
+    let mut current_strofa_schemat = String::new();
     let mut mapowanie_kolorów: std::collections::HashMap<usize, char> =
         std::collections::HashMap::new();
     let mut następna_litera = b'a';
     let mut numery_grup = Vec::new();
+    let mut has_lines_in_strofa = false;
 
     for z in wersy {
         if z.wers.oryginalne.is_empty() {
+            if has_lines_in_strofa {
+                schemat_parts.push(current_strofa_schemat);
+                current_strofa_schemat = String::new();
+                has_lines_in_strofa = false;
+            }
             continue;
         }
+        has_lines_in_strofa = true;
         numery_grup.push(z.kolor);
         if z.kolor == 0 {
-            schemat.push('-');
+            current_strofa_schemat.push('-');
         } else {
             let litera = *mapowanie_kolorów.entry(z.kolor).or_insert_with(|| {
                 let l = następna_litera as char;
@@ -82,19 +90,24 @@ pub fn schemat_rymów(wersy: &[ZapisWersu]) -> (String, Vec<usize>) {
                 }
                 l
             });
-            schemat.push(litera);
+            current_strofa_schemat.push(litera);
         }
     }
+    if has_lines_in_strofa {
+        schemat_parts.push(current_strofa_schemat);
+    }
+
+    let schemat = schemat_parts.join(" ");
     (schemat, numery_grup)
 }
 
-pub fn get_stanzas(wersy: &[ZapisWersu]) -> Vec<Vec<&ZapisWersu>> {
-    let mut stanzas = Vec::new();
+pub fn get_strofy(wersy: &[ZapisWersu]) -> Vec<Vec<&ZapisWersu>> {
+    let mut strofy = Vec::new();
     let mut current = Vec::new();
     for z in wersy {
         if z.wers.oryginalne.is_empty() {
             if !current.is_empty() {
-                stanzas.push(current);
+                strofy.push(current);
                 current = Vec::new();
             }
         } else {
@@ -102,9 +115,13 @@ pub fn get_stanzas(wersy: &[ZapisWersu]) -> Vec<Vec<&ZapisWersu>> {
         }
     }
     if !current.is_empty() {
-        stanzas.push(current);
+        strofy.push(current);
     }
-    stanzas
+    strofy
+}
+
+pub fn get_stanzas(wersy: &[ZapisWersu]) -> Vec<Vec<&ZapisWersu>> {
+    get_strofy(wersy)
 }
 
 pub fn analizuj_sonet(wersy: &[ZapisWersu]) -> Option<RodzajSonetu> {
@@ -504,6 +521,97 @@ pub fn gatunek_literacki(wersy: &[ZapisWersu]) -> Option<GatunekLiteracki> {
     None
 }
 
+/// Wyznacza najkrótszy okres sylab w wierszu za pomocą algorytmu KMP (tablica pi) w czasie liniowym O(N),
+/// z zachowaniem warunku, że okres musi być dzielnikiem całkowitej liczby wersów.
+pub fn wyznacz_okres_sylab(sylaby: &[usize]) -> Option<Vec<usize>> {
+    let n = sylaby.len();
+    if n == 0 {
+        return None;
+    }
+
+    // Obliczenie tablicy pi (KMP prefix function) w czasie O(N)
+    let mut pi = vec![0; n];
+    let mut j = 0;
+    for i in 1..n {
+        while j > 0 && sylaby[i] != sylaby[j] {
+            j = pi[j - 1];
+        }
+        if sylaby[i] == sylaby[j] {
+            j += 1;
+        }
+        pi[i] = j;
+    }
+
+    // Sprawdzamy dzielniki n rosnąco - najmniejszy dzielnik spełniający warunek KMP to szukany okres
+    for l in 1..=n {
+        if n % l == 0 {
+            if pi[n - 1] >= n - l {
+                return Some(sylaby[..l].to_vec());
+            }
+        }
+    }
+    None
+}
+
+/// Wyznacza schemat rymów z filtrowaniem rymów przypadkowych (szumu występującego tylko raz)
+/// oraz obsługą rymów międzyzwrotkowych w ujęciu globalnym (ze spacjami między zwrotkami).
+pub fn schemat_rymow_filtrowany(wersy: &[ZapisWersu]) -> (String, Vec<usize>) {
+    let mut kolor_counts = std::collections::HashMap::new();
+
+    for z in wersy {
+        if z.wers.oryginalne.is_empty() {
+            continue;
+        }
+        if z.kolor != 0 {
+            *kolor_counts.entry(z.kolor).or_insert(0) += 1;
+        }
+    }
+
+    let mut schemat_parts = Vec::new();
+    let mut current_strofa_schemat = String::new();
+    let mut mapowanie_kolorów: std::collections::HashMap<usize, char> =
+        std::collections::HashMap::new();
+    let mut następna_litera = b'a';
+    let mut numery_grup = Vec::new();
+    let mut has_lines_in_strofa = false;
+
+    for z in wersy {
+        if z.wers.oryginalne.is_empty() {
+            if has_lines_in_strofa {
+                schemat_parts.push(current_strofa_schemat);
+                current_strofa_schemat = String::new();
+                has_lines_in_strofa = false;
+            }
+            continue;
+        }
+        has_lines_in_strofa = true;
+        numery_grup.push(z.kolor);
+        if z.kolor == 0 {
+            current_strofa_schemat.push('-');
+        } else {
+            let count = kolor_counts.get(&z.kolor).copied().unwrap_or(0);
+            if count < 2 {
+                current_strofa_schemat.push('-');
+            } else {
+                let litera = *mapowanie_kolorów.entry(z.kolor).or_insert_with(|| {
+                    let l = następna_litera as char;
+                    if następna_litera < b'z' {
+                        następna_litera += 1;
+                    }
+                    l
+                });
+                current_strofa_schemat.push(litera);
+            }
+        }
+    }
+    if has_lines_in_strofa {
+        schemat_parts.push(current_strofa_schemat);
+    }
+
+    let schemat = schemat_parts.join(" ");
+    (schemat, numery_grup)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -545,5 +653,43 @@ mod tests {
         ];
         let gatunek = gatunek_literacki(&wersy);
         assert_eq!(gatunek, Some(GatunekLiteracki::Limerick));
+    }
+
+    #[test]
+    fn test_wyznacz_okres_sylab() {
+        let sylaby = vec![12, 12, 7, 7, 8, 12, 12, 7, 7, 8];
+        let okres = wyznacz_okres_sylab(&sylaby);
+        assert_eq!(okres, Some(vec![12, 12, 7, 7, 8]));
+
+        let niezgodne = vec![12, 12, 7, 8];
+        assert_eq!(wyznacz_okres_sylab(&niezgodne), Some(vec![12, 12, 7, 8]));
+    }
+
+    #[test]
+    fn test_schemat_rymow_filtrowany() {
+        let wersy = vec![
+            make_zapis("a", 1), // a (występuje 2 razy)
+            make_zapis("b", 2), // b (występuje 1 raz - szum)
+            make_zapis("c", 1), // a
+            make_zapis("d", 3), // c (występuje 2 razy)
+            make_zapis("e", 3), // c
+        ];
+        let (schemat, _) = schemat_rymow_filtrowany(&wersy);
+        assert_eq!(schemat, "a-abb");
+    }
+
+    #[test]
+    fn test_schemat_rymow_globalny_ze_spacjami() {
+        let wersy = vec![
+            make_zapis("1", 1),
+            make_zapis("2", 1),
+            make_zapis("3", 2),
+            make_zapis("", 0), // pusta linia (zwrotka 2)
+            make_zapis("4", 3),
+            make_zapis("5", 3),
+            make_zapis("6", 2), // rym 'b' z poprzedniej zwrotki (wspólny)
+        ];
+        let (schemat, _) = schemat_rymow_filtrowany(&wersy);
+        assert_eq!(schemat, "aab ccb");
     }
 }
